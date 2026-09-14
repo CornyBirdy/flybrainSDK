@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flybrain"
+version = "0.1.0"
+description = "A connectome-constrained fly brain SDK: fly neural circuits as typed sensory and motor ports"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.21",
+    "flyvis>=1.2.0",
+]
+
+[project.optional-dependencies]
+demo = ["matplotlib>=3.5", "pillow>=9.0"]
+dev = ["pytest>=7.0", "matplotlib>=3.5", "pillow>=9.0"]
+
+[tool.setuptools.packages.find]
+include = ["flybrain*"]
+
+[tool.setuptools.package-data]
+flybrain = ["README.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

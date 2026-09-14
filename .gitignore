@@ -11,3 +11,6 @@ venv/
 # flyvis downloads its pretrained weights here
 data/
 *.zip
+
+# Stage-1 scratch work (MaleCNS exploration) and the connectome cache
+scratch/

@@ -434,6 +434,46 @@ class OpticLobeCircuit(Circuit):
 
     # -- introspection -------------------------------------------------------
 
+    def type_activity(self, cell_type: str) -> np.ndarray:
+        """Mean activity of one flyvis cell type in each lobe.
+
+        Reported as a deviation from the grey-screen resting state, in the
+        same arbitrary flyvis units as HS_LEFT and HS_RIGHT, pooled over every
+        column of the type. Purely a read-out: it changes nothing and is not
+        used by YAW.
+
+        Args:
+            cell_type: A flyvis cell type, e.g. ``"T4b"`` or ``"Mi1"``.
+
+        Returns:
+            Array of shape ``(2,)``: ``[RIGHT_EYE, LEFT_EYE]``, where the left
+            entry is this lobe's response to the mirrored frame.
+
+        Raises:
+            KeyError: If the type is not in the flyvis connectome.
+            RuntimeError: If :meth:`step` has not been called since the last
+                reset, so there is no activity to report.
+        """
+        if self._activity is None:
+            raise RuntimeError(
+                "No activity yet; call set_input() and step() before "
+                "type_activity()."
+            )
+        try:
+            cells = np.asarray(
+                self._connectome.nodes.layer_index[cell_type][:]
+            ).reshape(-1)
+        except Exception as exc:
+            raise KeyError(
+                f"{cell_type!r} is not a flyvis cell type. flyvis models 65 "
+                "columnar types of the optic lobe; HS and other lobula-plate "
+                "tangential cells are not among them."
+            ) from exc
+        deviation = self._activity - self._baseline
+        return np.array(
+            [float(deviation[eye][cells].mean()) for eye in (RIGHT_EYE, LEFT_EYE)]
+        )
+
     @property
     def activity(self) -> Optional[np.ndarray]:
         """Raw activity, shape (2, 45669), after the last step (read-only)."""

@@ -1,9 +1,11 @@
 # MaleCNS working notes
 
-Stage-1 log for adding a second circuit (`male_cns`) to flybrainSDK. What the
-data actually is, what was verified, and what could not be.
+Log for adding a second circuit (`male_cns`) to flybrainSDK. What the data
+actually is, what was verified, and what could not be.
 
 Written as work happened, so it records dead ends as well as results.
+Sections 1-9 are stage 1 (standalone, before touching the SDK); 10 is stage 2
+(the circuit); 11 is stage 3 (coupling, which stays a hypothesis).
 
 ---
 
@@ -440,3 +442,146 @@ it and am not claiming it works.
   where the GRN modality mapping in §3 comes from.
 * `vshapenko/flypoke` and `eonsystemspbc/fly-brain` were listed in the brief
   but not needed once the Shiu repo was in hand.
+
+---
+
+## 10. Stage 2: the circuit
+
+The stage-1 prototype was promoted more or less unchanged. Layout:
+
+```
+flybrain/malecns/dataset.py     download, cache, transmitter signs
+flybrain/malecns/lif.py         the integrator (NumPy only, no scipy import)
+flybrain/circuits/male_cns.py   the circuit; the ONLY importer of the above
+flybrain/circuits/coupling.py   stage 3, opt-in
+```
+
+The loader is a subpackage rather than a module inside `circuits/` so that the
+relationship mirrors the existing one: flyvis is an external package that only
+`optic_lobe.py` imports, and `flybrain.malecns` is a local package that only
+`male_cns.py` imports. Checked, not assumed:
+
+```
+$ grep -rl "flybrain.malecns\|from ..malecns" flybrain/
+flybrain/circuits/male_cns.py
+```
+
+**Things that needed deciding along the way.**
+
+* *Lazy imports.* `import flybrain` must not pull in torch or scipy. `optic_lobe`
+  already imports flyvis inside its constructor; `male_cns` does the same with
+  `flybrain.malecns`, and `lif.py` was changed to drop its module-level
+  `import scipy.sparse` (it only ever called `.tocsr()` on the caller's matrix).
+  Verified: after `import flybrain`, neither `flyvis` nor `scipy` nor `pandas`
+  is in `sys.modules`.
+* *Input ports are levels, not events.* `optic_lobe` requires a frame to be
+  staged before every `step` and raises otherwise. For a gustatory drive that
+  would be wrong: zero is a legitimate, meaningful value, and the test "silent
+  input produces no motor output" depends on it. So `set_input` sets a rate
+  that persists until changed.
+* *Read-outs need smoothing.* A single neuron emits 0 or 1 spikes in a 1/60 s
+  frame, so the raw per-frame rate is unusable. Output ports are exponentially
+  smoothed with `readout_tau` (0.1 s). This is a read-out choice and does not
+  feed back into the dynamics; the tests use the unsmoothed cumulative rate so
+  they do not depend on it.
+* *Ports are named after neurons.* `MN9_L`, `DNa02_R`, `HSE_L` - not
+  `PROBOSCIS` or `STEER`. A descending neuron's firing rate is not a command,
+  and there is nothing in the connectome that converts one into the other, so
+  naming it after the behaviour would be inventing a mapping. `optic_lobe`'s
+  `YAW` *is* a command, with a gain and a sign convention, and that asymmetry
+  between the two circuits is deliberate.
+* *One addition to `optic_lobe.py`*: a read-only `type_activity(cell_type)`
+  method, so the coupling module can read flyvis cell-type activity without
+  reaching into private attributes. Purely additive; the existing optic-lobe
+  tests pass unchanged.
+
+**Tests.** `tests/test_male_cns.py`, 15 tests, ~20 s, skipping cleanly when
+the cache is absent. They assert the sugar to MN9 result, the bitter
+suppression, the shuffle control (including that the shuffled network is still
+firing, so the control is not vacuous), that silent input produces exactly zero
+spikes network-wide, that the two circuits' ports do not collide, and that the
+MN9 bodies are still 10331 and 16949 after a cache rebuild.
+
+Full suite with both models downloaded: **33 passed**. With neither: 7 passed,
+26 skipped. The pre-existing optic-lobe tests were not modified.
+
+---
+
+## 11. Stage 3: coupling flyvis to MaleCNS
+
+**This is a hypothesis and it is flagged as one everywhere it appears.** It is
+off by default, `FlyBrain(circuits=["optic_lobe", "male_cns"])` does not
+enable it, and constructing the bridge against a circuit that has not opted in
+raises.
+
+The reason it is worth attempting at all is specific: flyvis has T4/T5 cells
+whose dynamics were *fitted to recordings* but no HS cells - which is why this
+SDK has to model the HS read-out - while MaleCNS has the real HS cells (HSE,
+HSN, HSS, two of each, with measured wiring) but no fitted dynamics. T4/T5 to
+T4/T5 is the one seam narrow enough to probe.
+
+**What the mapping assumes, worst first.**
+
+1. *Retinotopy is discarded.* flyvis has 721 columns per subtype; MaleCNS has
+   ~840 cells per subtype per side. No column-to-cell correspondence is known,
+   so flyvis activity is pooled to one number per subtype per lobe and every
+   MaleCNS cell of that subtype is driven equally. A real HS cell integrates a
+   *spatial* pattern; this destroys exactly that.
+2. *flyvis activity is not a firing rate.* It is a dimensionless model membrane
+   potential. The gain converting it to Hz is invented (1000 Hz per unit).
+3. *Subtype letters are assumed to mean the same thing in both datasets.* Both
+   use the Janelia convention, so a-to-a is the natural reading, but it is a
+   naming convention and not a measurement of preferred direction in this
+   animal.
+4. *Chirality is assumed.* `optic_lobe` makes its "left lobe" by mirroring the
+   frame; MaleCNS's left lobe is a real left lobe.
+5. *Half-wave rectification*, because a rate cannot be negative.
+
+**What it actually produces.** 30 frames of a drifting panorama at 60 fps,
+three MaleCNS seeds each:
+
+```
+                                 optic_lobe YAW   T4/T5 drive   MaleCNS HSE_L - HSE_R
+  scene drifts right (yaw left)        +0.117       52.5 Hz            +30.3 Hz
+  scene drifts left  (yaw right)       -0.118       56.4 Hz            -27.0 Hz
+  static scene                         +0.024       55.0 Hz             -4.8 Hz
+
+  per-seed HSE_L - HSE_R:  right +42.5 +23.4 +25.1
+                           left  -25.9 -19.9 -35.1
+                           static -4.4  -5.5  -4.4
+```
+
+The real MaleCNS HS cells do inherit a direction-dependent left/right
+imbalance whose sign tracks the optic lobe's own, and the three seeds do not
+overlap between conditions. That is more than I expected to get.
+
+**But it does not mean much, for two reasons I want on the record.**
+
+* Look at the middle column. A **static** scene stages essentially as much
+  T4/T5 drive as a moving one, because the drive is derived from flyvis
+  activity relative to a *grey* screen and a static textured scene is already a
+  large deviation from grey. So the bridge is not a motion signal. The motion
+  lives only in the small left/right imbalance, riding on a large
+  motion-independent pedestal. `tests/test_coupling.py` asserts this pedestal
+  deliberately, so the flaw cannot quietly disappear.
+* The HS cells sit near 300 Hz in every condition - saturated. Worse, real HS
+  cells are **graded, largely non-spiking** neurons; forcing them through a LIF
+  spike generator is wrong in kind, not just in degree.
+
+Coupled cost: ~200 ms per 1/60 s frame, i.e. 12 s of wall time per second of
+simulated time, about 5 fps.
+
+**What would make this real:** a column-to-cell registration between the flyvis
+lattice and the MaleCNS optic lobe, and a calibration of flyvis units against
+measured T4/T5 firing rates. Neither exists, and I did not invent either.
+
+---
+
+## 12. Environment note
+
+Everything above ran in a 4 vCPU / 15 GB Linux container, not on the target
+workstation. flyvis and its pretrained weights were installed here too (after
+a torch/torchvision version clash that needed a matching CPU-wheel
+`torchvision`), so the coupled path in section 11 was actually executed rather
+than only written. Expect a Ryzen 5 3600 to be faster than the numbers in
+section 7, but not by a category.

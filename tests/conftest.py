@@ -1,7 +1,9 @@
 """Shared fixtures.
 
-Tests that need the pretrained network are skipped rather than failed when
-flyvis or its weights are unavailable, so the fast tests still run anywhere.
+Tests that need a downloaded model are skipped rather than failed when it is
+unavailable, so the fast tests still run anywhere. There are two such models:
+the pretrained flyvis weights (``optic_lobe``) and the MaleCNS connectome
+cache (``male_cns``).
 """
 
 import numpy as np
@@ -51,3 +53,58 @@ def panorama(height: int, width: int, seed: int = 0) -> np.ndarray:
     )
     img = np.apply_along_axis(lambda m: np.convolve(m, k, "same"), 0, img)
     return ((img - img.min()) / np.ptp(img)).astype(np.float32)
+
+
+def _connectome_available() -> bool:
+    try:
+        from flybrain.malecns import cache_available
+    except Exception:
+        return False
+    return cache_available()
+
+
+requires_connectome = pytest.mark.skipif(
+    not _connectome_available(),
+    reason=(
+        "MaleCNS connectome cache not built; "
+        "run 'python -m flybrain.malecns download'"
+    ),
+)
+
+
+@pytest.fixture(scope="session")
+def male_cns():
+    """A MaleCNSCircuit loaded once for the whole session.
+
+    Loading the connectome costs a second or two and about a gigabyte, so it
+    is emphatically not per-test.
+    """
+    if not _connectome_available():
+        pytest.skip("MaleCNS connectome cache not built")
+    from flybrain.circuits import MaleCNSCircuit
+
+    return MaleCNSCircuit()
+
+
+def mean_rate(circuit, port, drive, duration, reset=True):
+    """Drive ``circuit`` for ``duration`` seconds and return ``port``'s rate.
+
+    Uses the cumulative, unsmoothed mean rate rather than the smoothed
+    read-out, so a test result does not depend on ``readout_tau``.
+
+    Args:
+        circuit: A MaleCNSCircuit.
+        port: The motor port to measure.
+        drive: Mapping of sensory port to firing rate in Hz.
+        duration: Seconds of simulated time.
+        reset: Whether to reset the circuit first.
+
+    Returns:
+        Mean firing rate over the run, in Hz.
+    """
+    if reset:
+        circuit.reset()
+    for sensory_port, rate in drive.items():
+        circuit.set_input(sensory_port, rate)
+    circuit.step(duration)
+    return float(circuit.mean_rates()[circuit.population(port)].mean())

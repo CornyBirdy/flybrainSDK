@@ -11,7 +11,23 @@ from __future__ import annotations
 
 from ..ports import Port
 
-__all__ = ["YAW", "HS_LEFT", "HS_RIGHT", "FLOW_ASYMMETRY", "ALL"]
+__all__ = [
+    "YAW",
+    "HS_LEFT",
+    "HS_RIGHT",
+    "FLOW_ASYMMETRY",
+    "MN9_L",
+    "MN9_R",
+    "DNa02_L",
+    "DNa02_R",
+    "MDN_L",
+    "MDN_R",
+    "DNp09_L",
+    "DNp09_R",
+    "HSE_L",
+    "HSE_R",
+    "ALL",
+]
 
 
 YAW = Port(
@@ -82,5 +98,118 @@ FLOW_ASYMMETRY = Port(
     ),
 )
 
+# --------------------------------------------------------------------------
+# MaleCNS descending and motor neuron read-outs (male_cns circuit)
+#
+# These are not commands and not gains. Each one is the modelled firing rate
+# of one named neuron in the MaleCNS v1.0 connectome, in Hz, smoothed over
+# the circuit's readout_tau. The port is named after the neuron so that there
+# is never any doubt which cell it is; what the host does with a descending
+# neuron's rate is the host's business.
+#
+# Every one of these is a LIF read-out, so all the assumptions in
+# flybrain/malecns/dataset.py and lif.py apply: uniform synaptic weight,
+# uniform membrane constants, sign inferred from a predicted transmitter, no
+# neuromodulation, no gap junctions. Absolute rates are not calibrated
+# against recordings; differences between conditions are the meaningful part.
+# --------------------------------------------------------------------------
+
+
+def _rate_port(name: str, description: str) -> Port:
+    """A firing-rate output port for one named MaleCNS neuron."""
+    return Port(
+        name=name,
+        direction="out",
+        dtype="float32",
+        shape=None,
+        units="firing rate, Hz",
+        description=description,
+    )
+
+
+MN9_L = _rate_port(
+    "MN9_L",
+    "Firing rate of the LEFT MN9 (bodyId 10331), the motor neuron whose "
+    "contraction extends the rostrum - the largest segment of the proboscis. "
+    "This is the standard read-out for proboscis extension and the one Shiu "
+    "et al. (2024) use. Driving SUGAR_GRN raises it; co-driving BITTER_GRN "
+    "silences it.",
+)
+
+MN9_R = _rate_port(
+    "MN9_R",
+    "Firing rate of the RIGHT MN9 (bodyId 16949). USE WITH CARE: this body is "
+    "flagged 'RT Hard to trace' in MaleCNS v1.0 and has evidently lost inputs "
+    "that MN9_L retains - it responds roughly 20x more weakly to the same "
+    "sugar drive. The asymmetry is a reconstruction artefact, not biology. "
+    "Prefer MN9_L, and read the two separately rather than averaging them.",
+)
+
+DNa02_L = _rate_port(
+    "DNa02_L",
+    "Firing rate of the LEFT DNa02, a descending neuron whose activity is "
+    "associated with ipsilateral turning during walking. Read-out only: the "
+    "SDK does not convert it into a steering command, because the mapping "
+    "from DN rate to body turn rate is not in the connectome.",
+)
+
+DNa02_R = _rate_port(
+    "DNa02_R",
+    "Firing rate of the RIGHT DNa02. Mirror of DNa02_L; the left/right "
+    "difference is the quantity usually of interest.",
+)
+
+MDN_L = _rate_port(
+    "MDN_L",
+    "Firing rate of the LEFT MDN (moonwalker descending neuron), associated "
+    "with backward walking. MaleCNS annotates 4 MDN bodies, 2 per side; this "
+    "port is the mean rate of the left pair.",
+)
+
+MDN_R = _rate_port(
+    "MDN_R",
+    "Firing rate of the RIGHT MDN. Mean of the right pair.",
+)
+
+DNp09_L = _rate_port(
+    "DNp09_L",
+    "Firing rate of the LEFT DNp09, a descending neuron associated with "
+    "stopping and freezing.",
+)
+
+DNp09_R = _rate_port(
+    "DNp09_R",
+    "Firing rate of the RIGHT DNp09.",
+)
+
+HSE_L = _rate_port(
+    "HSE_L",
+    "Firing rate of the LEFT HSE, an equatorial horizontal-system tangential "
+    "cell of the lobula plate. Worth knowing: HS cells are REAL NEURONS in "
+    "MaleCNS (HSE, HSN, HSS, two of each), whereas the optic_lobe circuit has "
+    "to model them because flyvis stops at the columnar types. They are only "
+    "meaningful here if something is driving T4T5_DRIVE.",
+)
+
+HSE_R = _rate_port(
+    "HSE_R",
+    "Firing rate of the RIGHT HSE. See HSE_L.",
+)
+
 #: All motor ports defined by the SDK.
-ALL = (YAW, HS_LEFT, HS_RIGHT, FLOW_ASYMMETRY)
+ALL = (
+    YAW,
+    HS_LEFT,
+    HS_RIGHT,
+    FLOW_ASYMMETRY,
+    MN9_L,
+    MN9_R,
+    DNa02_L,
+    DNa02_R,
+    MDN_L,
+    MDN_R,
+    DNp09_L,
+    DNp09_R,
+    HSE_L,
+    HSE_R,
+)

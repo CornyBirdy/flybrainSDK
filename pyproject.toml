@@ -15,8 +15,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The male_cns circuit reads the MaleCNS v1.0 release tables (Arrow feather)
+# and holds the connectome as a scipy sparse matrix. Nothing else in the SDK
+# needs these, so they are an extra rather than a hard dependency.
+male_cns = ["pandas>=1.5", "pyarrow>=10.0", "scipy>=1.9"]
 demo = ["matplotlib>=3.5", "pillow>=9.0"]
-dev = ["pytest>=7.0", "matplotlib>=3.5", "pillow>=9.0"]
+dev = [
+    "pytest>=7.0",
+    "matplotlib>=3.5",
+    "pillow>=9.0",
+    "pandas>=1.5",
+    "pyarrow>=10.0",
+    "scipy>=1.9",
+]
 
 [tool.setuptools.packages.find]
 include = ["flybrain*"]

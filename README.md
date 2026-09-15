@@ -1,5 +1,10 @@
 # flybrain
 
+> ⚠️ **Work in progress.** This SDK is an early, unfinished experiment. The API,
+> the port names and the circuit behaviour can all change without notice, parts
+> of it are unvalidated (see the "measured vs. assumed" notes below), and it is
+> not ready for anything you would rely on. Expect rough edges and breakage.
+
 A connectome-constrained fly brain SDK. It exposes real fly neural circuits as
 **typed sensory inputs and motor outputs**, so a project can embody the fly
 brain in a car, a drone, a game or a robot without touching the neuroscience.

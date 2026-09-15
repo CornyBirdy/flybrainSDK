@@ -1,5 +1,8 @@
 # flybrain port reference
 
+> ⚠️ **Work in progress.** Everything in this reference is provisional — port
+> names, sign conventions and default parameters can change without notice.
+
 This is the contract between the fly neuroscience and whatever is embodying it.
 If you are picking this SDK up in a later session, read this file and you should
 not need to relearn the biology or reread the flyvis source.

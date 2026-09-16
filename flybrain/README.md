@@ -306,6 +306,13 @@ Research / Cambridge Connectomics, CC-BY):
 
 - which neuron contacts which neuron: 164,587 neurons, 25,563,197 connections;
 - how many synapses each connection has: 124,025,046 in total;
+
+Those are the **release** figures. The graph the model runs on is a 96% subset
+of them — 164,587 neurons, **24,539,704 connections, 120,793,200 synapses** —
+because the 1,023,493 connections whose presynaptic neuron has no modelled sign
+are dropped (see the last row of the table below). All 164,587 neurons survive.
+Quote the release figures for the data and the subset figures for the model.
+
 - a neurotransmitter prediction per neuron, with ground truth for ~85,000;
 - cell type, class, soma side and entry nerve.
 
@@ -342,14 +349,36 @@ MN9_L firing rate, 5 trials x 1 s, GRNs driven at 150 Hz
   sugar + bitter                   0.00 +/- 0.00 Hz     PASS (suppressed)
 ```
 
-**Shuffle control.** Rewiring the connectome at random while preserving every
-neuron's in-degree, out-degree, synapse counts and transmitter signs takes MN9
-to exactly 0.00 Hz, across three seeds, while the network keeps firing. So the
-result is a property of the wiring rather than of the simulator. Reported
-honestly: the shuffle also cuts total network activity about ninefold, so the
-null is not perfectly matched. `NOTES.md` has the numbers.
+**Shuffle control.** Rewiring the connectome at random — every edge keeps its
+presynaptic neuron, synapse count and transmitter sign, and the postsynaptic
+slots are permuted — takes MN9 to exactly 0.00 Hz across six seeds, while the
+network keeps firing. So the result is a property of the wiring rather than of
+the simulator. Two things reported rather than glossed:
 
-`tests/test_male_cns.py` asserts all of this.
+- The shuffle cuts total network activity to about an eighth (measured
+  0.11–0.13 of the real graph), so the null is not matched for total drive.
+- It does **not** preserve either degree sequence, despite the function's name.
+  Merging edges that collide on a `(pre, post)` pair already taken changes
+  in-degree on 28,583 neurons by up to 836, and out-degree on 28,981 by up to
+  897. What it preserves exactly is total synapse mass (120,793,200 unsigned,
+  26,149,288 signed) and every edge's sign. See the `shuffle_preserving_degree`
+  docstring, which now says so, and `VERIFICATION.md` Finding 3.
+
+**Specificity control.** This is the one the original notes did not run, and it
+qualifies the result above. Driving **34 random gustatory neurons** also drives
+MN9 — median 3.0 Hz against sugar's 22.0 at the test suite's protocol, a margin
+of ~7× (and ~3.6× at the 5-trial protocol in the table). The null is
+heavy-tailed: of 24 draws, 5 exceeded sugar's own rate and one reached 156 Hz
+with the network in near-global runaway. `LB4b` (8 neurons) comes within a
+factor of 2. And the effect is mostly **LB3c** (18.4 ± 3.3 Hz driven alone) not
+LB3b (4.5 ± 2.0 Hz).
+
+Bitter and water do give exactly zero, so specificity is real in those
+directions. What does not hold is the reading that only sugar drives MN9: sugar
+wins by a measured factor, not a categorical one. `NOTES.md` §5 has the full
+treatment and `VERIFICATION.md` Finding 4 is where it came from.
+
+`tests/test_male_cns.py` asserts all of this, including the specificity margin.
 
 ### Two results that do not look right
 
@@ -420,17 +449,22 @@ Measured on 4 vCPU of a 2.10 GHz Xeon, single-threaded in the hot loop:
 
 | condition | wall time per second of simulated time |
 |---|---|
-| nothing driven | 3.3 s |
-| water GRNs driven | 5.0 s |
-| bitter GRNs driven | 5.7 s |
-| sugar + bitter | 7.8 s |
-| sugar GRNs driven | 8.9 s |
-| high-salt GRNs driven | 11.1 s |
-| coupled to `optic_lobe` (below) | 12.0 s |
+| nothing driven | 4.57 s |
+| bitter GRNs driven | 8.27 s |
+| sugar GRNs driven | 15.03 s |
+| high-salt GRNs driven | 15.47 s |
 
-So a 1/60 s frame costs 55–200 ms and a 1/30 s frame costs 110–400 ms:
-**3–9 fps**, against `optic_lobe`'s ~30 ms/step. Cost rises with how much of
-the network is firing.
+Measured on a 4-core Intel Xeon @ 2.80 GHz, 15 GB, no GPU, nothing else
+running; `cpu/wall = 1.01`, so single-threaded, one core of four. So a 1/60 s
+frame costs 76–258 ms and a 1/30 s frame costs 152–516 ms: **4.0–13.1 fps** at
+1/60 s and **2.0–6.6 fps** at 1/30 s, against `optic_lobe`'s ~30 ms/step. Cost
+rises with how much of the network is firing (rest → salt is 3.4×).
+
+An earlier version of this table reported 3.3–11.1 s and "3–9 fps" from a
+different container, which turned out to be 1.4–1.7× optimistic and did not
+reproduce — despite that container naming a *slower* CPU, so clock speed does
+not explain it. `NOTES.md` §7 names both machines; `VERIFICATION.md` Finding 7
+has the detail.
 
 This is the reference model's cost, not an implementation defect. Shiu et al.
 integrate at 0.1 ms, so one 1/60 s frame is 167 internal steps over all 164,587
@@ -439,10 +473,19 @@ neurons. Raising `dt` would be a different model. `step(dt)` accepts the same
 longer than real time to return. Nothing uses the GPU: the inner loop is a
 sparse gather-scatter plus a few dense passes, so it is memory-bandwidth bound.
 
-Memory: about 1.2 GB resident, from a 197 MB cached sparse matrix plus the
-delay buffer. A `min_synapses=5` build cuts 24.5 M connections to ~6.2 M and
-would be much cheaper, but **the sanity checks have only been run at
-`min_synapses=1`**, so it is not offered as a validated mode.
+Memory: **0.64–0.72 GB resident** during a run, from a 197 MB cached sparse
+matrix plus the delay buffer. (An earlier version said "about 1.2 GB"; that was
+pessimistic by roughly half.) The high-water mark is not the run but the one-off
+**cache build, at 2.52 GB**, which is the figure to size a machine against.
+
+A `min_synapses=5` build cuts 24.5 M connections to 6.1 M and a 197 MB cache to
+49 MB, so it is **cheaper in memory but not faster**: measured at 15.30 s per
+simulated second under sugar drive against the full model's 15.03 s, i.e. no
+speedup at all from dropping 75% of the edges. The bottleneck is the dense
+per-step passes over 164,587 neurons, not the sparse scatter. It also changes
+the biology — sugar → MN9 roughly doubles — and **the sanity checks have only
+been run at `min_synapses=1`**, so it is not offered as a validated mode. See
+`NOTES.md` §7.
 
 ### Configuration
 

@@ -48,7 +48,9 @@ DRIVE_HZ = 150.0
 #:
 #: Doubling DURATION tightens the spread but takes the sugar-driven condition
 #: from 2.6 s to 9.6 s of wall time, and there are four such conditions in
-#: this file: ~19 s -> ~45 s, on a full suite that already runs ~17 minutes.
+#: this file: ~19 s -> ~45 s. The full suite runs 145 s uncontended here and
+#: was measured at 1013 s on a contended container, so the added time is not
+#: free on shared hardware.
 #: The 0.5 s spread is already resolved 11 spikes deep at its minimum, so the
 #: extra wall time buys margin we do not need. If you lengthen it, the floor
 #: below can be raised in step.

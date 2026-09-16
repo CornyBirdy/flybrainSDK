@@ -9,13 +9,27 @@ What the underlying model is
 **MaleCNS v1.0** (HHMI Janelia FlyEM / Google Research / Cambridge
 Connectomics, CC-BY): a serial-section EM reconstruction of the central
 nervous system of a male *Drosophila melanogaster*, covering brain, optic
-lobes and ventral nerve cord. The graph this circuit runs on has
+lobes and ventral nerve cord. The **release** holds
 
     164,587 neurons
      25,563,197 connections
     124,025,046 synapses
 
-which is the whole traced connectome, not a subset.
+and the **graph this circuit actually runs on** is a 96% subset of it:
+
+    164,587 neurons
+     24,539,704 connections
+    120,793,200 synapses
+
+Every neuron survives; 1,023,493 connections (4.0%) do not. They are dropped
+because their presynaptic neuron is predicted dopaminergic, octopaminergic,
+serotonergic or ``unclear``, and this SDK gives those neurons a sign of zero
+rather than guessing one -- see ``NT_SIGN`` in :mod:`flybrain.malecns.dataset`
+and assumption 4 below. So the release figures describe the data and the
+subset figures describe the model, and any claim about the simulation should
+quote the second set. (An earlier version of this docstring quoted the release
+figures and called them "the whole traced connectome, not a subset". It is a
+subset -- see ``VERIFICATION.md`` Finding 2.)
 
 On top of that wiring runs a **leaky integrate-and-fire** model in the style
 of Shiu et al., "A leaky integrate-and-fire computational model based on the
@@ -51,19 +65,40 @@ What was verified
 Activating the sweet-sensing labellar GRNs (types LB3b, LB3c) at 150 Hz
 drives MN9, the rostrum protractor, to 13.6 +/- 2.3 Hz against a silent
 baseline; co-activating the bitter GRNs (LB1a-e) returns it to zero; and a
-degree-preserving shuffle of the connectome abolishes the effect across three
-seeds. ``tests/test_male_cns.py`` asserts all three. See ``NOTES.md`` for the
-full log, including two results that do *not* look right.
+random rewiring of the connectome abolishes the effect across six seeds.
+``tests/test_male_cns.py`` asserts all three, and an independent audit
+reproduced all three on fresh seeds (``VERIFICATION.md`` Part D).
+
+**How specific this is, stated at the strength the evidence supports.** Bitter
+and water give exactly 0.00 Hz, so MN9 is not simply driven by any input. But
+MN9 is *not* a sugar-specific read-out: 34 *random* gustatory neurons also
+drive it, at a median of 3.0 Hz against sugar's 22.0 at the test suite's
+protocol, so sugar wins by a measured factor rather than categorically; the
+null is heavy-tailed, with 5 of 24 draws exceeding sugar. ``LB4b`` gets within
+a factor of 2. And the effect is mostly ``LB3c`` (18.4 Hz driven alone), not
+``LB3b`` (4.5 Hz). See ``NOTES.md`` §5 and ``VERIFICATION.md`` Finding 4.
+
+See ``NOTES.md`` for the full log, including two results that do *not* look
+right.
 
 Cost
 ----
 This circuit does **not** run at 30 fps and is not intended to. The reference
 model integrates at 0.1 ms, so one 1/60 s host frame is 167 internal steps
-over all 164,587 neurons; measured cost is 3.3-11 s of wall time per second
-of simulated time, i.e. 3-9 fps, against ~30 ms/step for ``optic_lobe``. Cost
-rises with how much of the network is firing. :meth:`MaleCNSCircuit.step`
-accepts the same ``dt`` as any other circuit; it will simply take longer than
-real time to return.
+over all 164,587 neurons. Measured cost, on a 4-core Xeon @ 2.80 GHz with no
+GPU: **4.6-15.5 s of wall time per second of simulated time**, i.e.
+**4.0-13.1 fps** at a 1/60 s frame and **2.0-6.6 fps** at 1/30 s, against
+~30 ms/step for ``optic_lobe``. Cost rises with how much of the network is
+firing. Resident set during a run is 0.64-0.72 GB; the high-water mark is the
+one-off cache build, at 2.52 GB. :meth:`MaleCNSCircuit.step` accepts the same
+``dt`` as any other circuit; it will simply take longer than real time to
+return.
+
+Building the cache with ``min_synapses=5`` drops the graph to 6.1 M edges and
+a 49 MB cache but is **not** faster -- measured at 15.30 s per simulated
+second under sugar drive against the full model's 15.03 s. The bottleneck is
+the dense per-step passes over 164,587 neurons, not the sparse scatter, so
+pruning edges cannot help. See ``NOTES.md`` §7.
 
 Getting the data
 ----------------
@@ -398,7 +433,7 @@ class MaleCNSCircuit(Circuit):
 
         ``dt`` is subdivided into internal steps of ``lif.dt`` (0.1 ms), so a
         60 fps host runs 167 internal steps per call. This is the honest cost
-        of the reference model, and it is why this circuit runs at 3-9 fps
+        of the reference model, and it is why this circuit runs at 2-13 fps
         rather than 30 - see the module docstring.
 
         Args:

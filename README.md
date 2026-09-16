@@ -71,6 +71,12 @@ circuit, so it gets its own table below.
   Connectomics; data public June 2026, paper in *Cell* 3 September 2026;
   CC-BY). 164,587 neurons, 25,563,197 connections, 124,025,046 synapses,
   covering brain, optic lobes and ventral nerve cord.
+- **The simulated graph is a 96% subset of that**: 164,587 neurons,
+  **24,539,704 connections, 120,793,200 synapses**. Every neuron survives;
+  1,023,493 connections (4.0%) are dropped because their presynaptic neuron is
+  predicted dopaminergic, octopaminergic, serotonergic or `unclear`, and this
+  SDK gives those a sign of zero rather than guessing one. Quote the first set
+  for the data and the second for the model.
 - A **leaky integrate-and-fire** model in the style of Shiu et al.,
   *Nature* 634, 210–219 (2024): a spike shifts the downstream membrane
   potential in proportion to the number of synapses between the two cells,
@@ -110,16 +116,38 @@ MN9_L firing rate, 5 trials x 1 s, GRNs driven at 150 Hz
   sugar + bitter (LB1a-e)          0.00 +/- 0.00 Hz     PASS (suppressed)
 ```
 
-Rewiring the connectome at random while preserving every neuron's degree,
-synapse counts and transmitter signs takes MN9 to exactly 0.00 Hz across three
-seeds, while the network keeps firing — so the result comes from the wiring,
-not from the simulator. The shuffle also cuts total activity about ninefold, so
-the null is not perfectly matched; `NOTES.md` says so and gives the numbers.
+Rewiring the connectome at random — keeping every edge's presynaptic neuron,
+synapse count and transmitter sign, and permuting who receives it — takes MN9
+to exactly 0.00 Hz across six seeds, while the network keeps firing. So the
+result comes from the wiring, not from the simulator. Two caveats, both with
+numbers in `NOTES.md`: the shuffle cuts total activity about eightfold, so the
+null is not matched for total drive; and it does **not** preserve either degree
+sequence exactly, because merging collided edges changes in- and out-degree by
+up to ~850 on ~29,000 neurons.
+
+**How specific is this?** Less than "sugar drives MN9" suggests, and the margin
+is quantitative rather than categorical:
+
+- Bitter (LB1a–e) and water (LB3a) give **exactly 0.00 Hz**. That part is clean.
+- But **34 *random* gustatory neurons also drive MN9**, at a median of 3.0 Hz
+  against sugar's 22.0 at the test suite's protocol — a margin of ~7×, and of
+  ~3.6× at the protocol above. The null is heavy-tailed: of 24 random draws,
+  5 exceeded sugar and one reached 156 Hz.
+- `LB4b`, 8 neurons, reaches within a factor of 2 of sugar.
+- Most of MaleCNS's 1,428 gustatory neurons are limbs (768 leg, 385 wing; only
+  163 labellar), which makes that null easier to beat than a labellar-only one.
+- The effect is mostly **LB3c** (18.4 Hz driven alone) rather than LB3b (4.5 Hz).
+
+So MN9 is a proboscis-extension read-out that sugar drives well and several
+other things also drive. `tests/test_male_cns.py` asserts the margin so it
+cannot quietly rot. `NOTES.md` §5 and `VERIFICATION.md` Finding 4 have the full
+picture.
 
 **Two results that do not look right**, left visible rather than tuned away:
 `HIGH_SALT_GRN` drives MN9 *harder* than sugar, because MaleCNS predicts those
 neurons cholinergic where the literature calls them glutamatergic; and a few
-ventral-nerve-cord motor neurons saturate. Both are documented in
+ventral-nerve-cord motor neurons run unphysiologically hot (peak 320–357 Hz
+across measurements, though nothing reaches 400 Hz). Both are documented in
 [`flybrain/README.md`](flybrain/README.md#two-results-that-do-not-look-right).
 
 #### Cost: `male_cns` does not run at 30 fps
@@ -128,16 +156,23 @@ Measured on 4 vCPU of a 2.10 GHz Xeon:
 
 | condition | wall time per second of simulated time |
 |---|---|
-| nothing driven | 3.3 s |
-| sugar GRNs driven | 8.9 s |
-| high-salt GRNs driven | 11.1 s |
-| coupled to `optic_lobe` | 12.0 s |
+| nothing driven | 4.6 s |
+| bitter GRNs driven | 8.3 s |
+| sugar GRNs driven | 15.0 s |
+| high-salt GRNs driven | 15.5 s |
 
-A 1/60 s frame costs **55–200 ms**: 3–9 fps, against `optic_lobe`'s ~30 ms/step.
-This is the reference model's cost, not an implementation defect — Shiu et al.
-integrate at 0.1 ms, so one frame is 167 internal steps over 164,587 neurons.
-`step(dt)` is callable at the same cadence as any other circuit; it just takes
-longer than real time to return. About 1.2 GB resident. Nothing uses the GPU.
+Measured on a 4-core Xeon @ 2.80 GHz, no GPU, single-threaded in the hot loop.
+A 1/60 s frame costs **76–258 ms**: **4.0–13.1 fps**, or **2.0–6.6 fps** at a
+1/30 s frame, against `optic_lobe`'s ~30 ms/step. This is the reference model's
+cost, not an implementation defect — Shiu et al. integrate at 0.1 ms, so one
+frame is 167 internal steps over 164,587 neurons. `step(dt)` is callable at the
+same cadence as any other circuit; it just takes longer than real time to
+return. **0.64–0.72 GB resident** during a run; the high-water mark is the
+one-off cache build at 2.52 GB. Nothing uses the GPU.
+
+An earlier version of this table reported 3.3–11.1 s and "3–9 fps" from a
+different container; those figures did not reproduce and were 1.4–1.7×
+optimistic. See `NOTES.md` §7 for both machines and `VERIFICATION.md` Finding 7.
 
 ---
 
@@ -267,7 +302,8 @@ for `male_cns`, both for the coupling.
 zero command on a symmetric scene, and agreement between uint8/float and
 RGB/greyscale inputs. `male_cns` tests assert the sugar → MN9 result, the
 bitter suppression, the degree-preserving shuffle control, and that a silent
-input produces no motor output at all.
+input produces no motor output at all, plus the random-rewiring control and
+the margin of sugar over a random gustatory population.
 
 ```bash
 python scripts/verify_sign.py     # re-derive the sign convention from scratch

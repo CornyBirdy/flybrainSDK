@@ -465,24 +465,49 @@ def load_cache(config: Optional[CacheConfig] = None) -> Connectome:
 
 
 def shuffle_preserving_degree(weights, seed: int = 0):
-    """Rewire a connectome at random, preserving every neuron's degree.
+    """Rewire a connectome at random, preserving total synapse mass and sign.
 
-    Each connection keeps its presynaptic neuron -- so out-degree, synapse
-    count and transmitter sign are all untouched -- and the postsynaptic
-    slots are permuted, leaving the in-degree sequence untouched too. What is
-    destroyed is exactly the pairing, who talks to whom, which is the only
-    thing the connectome actually measures.
+    The name is inherited and it overstates the case. Read the two lists below
+    before using this as a null model.
 
-    This is the null model for any claim of the form "the connectome produces
-    behaviour X": a result that survives this shuffle is a property of the
-    simulator, not of the wiring.
+    **Preserved exactly.** Every edge keeps its presynaptic neuron, its synapse
+    count and its transmitter sign, so the multiset of edge values is identical
+    and both the signed and the unsigned synapse totals are unchanged to the
+    integer: 120,793,200 unsigned and 26,149,288 signed, before and after, on
+    the shipped graph. The shape is unchanged. What is destroyed is exactly the
+    pairing -- who talks to whom -- which is the only thing the connectome
+    actually measures.
+
+    **NOT preserved: either degree sequence.** Permuting the postsynaptic slots
+    makes some edges collide on a ``(pre, post)`` pair that already exists, and
+    ``sum_duplicates()`` merges each collision into one edge. That removes an
+    edge from the presynaptic neuron's out-degree as well as from the
+    postsynaptic neuron's in-degree. Measured on the shipped graph at seed 7:
+
+        nnz         24,539,704 -> 24,466,652   (73,052 edges merged, 0.30%)
+        in-degree   28,583 neurons changed, by up to 836
+        out-degree  28,981 neurons changed, by up to 897
+
+    So this is a synapse-mass- and sign-matched null, not a degree-matched one.
+    It is also not matched for total propagated drive: a shuffled graph carries
+    about an eighth of the real graph's network activity (measured 0.11-0.13),
+    which ``NOTES.md`` §6 discloses and ``tests/test_male_cns.py`` asserts.
+
+    It remains the right null for the claim it is used for -- "the sugar to MN9
+    result is a property of the wiring, not of the simulator" -- because a
+    result that survives it is a property of the simulator. It is not strong
+    enough to support a claim that needs degrees held fixed. An earlier version
+    of this docstring said out-degree, synapse count and sign were "untouched"
+    and the in-degree sequence "untouched too"; see ``VERIFICATION.md``
+    Finding 3, which caught the in-degree half of that. Both halves are wrong.
 
     Args:
         weights: Signed connectome, any scipy sparse format.
         seed: RNG seed.
 
     Returns:
-        A CSR matrix with the same shape, degrees and edge values.
+        A CSR matrix with the same shape, the same multiset of edge values and
+        the same total synapse mass. Degrees differ slightly; see above.
     """
     import scipy.sparse as sp
 

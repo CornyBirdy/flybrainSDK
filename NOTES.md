@@ -296,6 +296,49 @@ from 13.6 Hz to complete silence. Bitter alone does not drive MN9 either.
 
 **Shuffle control: passes.** See §6.
 
+### How specific is this, really
+
+An audit ran the control this section never had, and the answer is weaker than
+the paragraphs above imply. **MN9 is not a sugar-specific read-out. Sugar wins
+by a quantitative margin, not a categorical one.** Stated at full strength:
+
+* **34 *random* gustatory neurons drive MN9 too.** Audit: 5/5 draws produced a
+  response, 1.67–7.50 Hz (mean 3.90) against sugar's 14.17 — a margin of about
+  **3.6×**. Re-measured over 24 draws at the test suite's protocol (MN9_L,
+  0.5 s, 150 Hz): median **3.00 Hz** against sugar's 22.00, a margin of ~7×.
+* **But the null is heavy-tailed, which the audit's five draws did not show.**
+  Of those 24 draws, **5 exceeded sugar's own 22.00 Hz** and one reached
+  **156 Hz** with the network in near-global runaway (901,044 Hz total activity
+  against sugar's 75,238). So the margin is a statement about the *typical*
+  random gustatory set. There exist gustatory sets of the same size that drive
+  MN9 far harder than sugar does.
+* **`LB4b` (8 neurons) gets close.** Audit: 11.00 Hz against sugar's 14.17.
+  Re-measured over four seed families at this section's own protocol (MN9 as the
+  mean of both bodies, 1 s): LB4b **7.50 ± 4.23** against sugar **15.00 ± 6.43**,
+  i.e. a factor of 2 with overlapping spreads.
+* **Most of the gustatory pool is not even a taste input to the proboscis.** Of
+  the 1,428 gustatory neurons, 768 are leg bristle and 385 wing bristle; only
+  163 are labellar. A "random gustatory" draw is mostly limbs, which makes the
+  null easier to beat than a labellar-only null would be. I have not run a
+  labellar-only null.
+* **What *is* categorical:** bitter (LB1a–e) and water (LB3a) give **exactly
+  0.00 Hz**, in every seed anyone has run. Specificity is real in those
+  directions. It is the "only sugar drives MN9" reading that does not hold.
+
+**And the effect is mostly LB3c, not LB3b.** Driven alone, at this section's
+protocol over four seed families: **LB3c (23 neurons) 18.38 ± 3.30 Hz**,
+**LB3b (11 neurons) 4.50 ± 1.97 Hz**. LB3c alone is at or above the full
+34-neuron sugar pair (15.00 ± 6.43); adding LB3b does not increase the response.
+This matters for §3, because the AN13B002 corroboration there is a check on
+**LB3b** — the half of the pair contributing least to the result. The
+corroboration is still evidence that the graph was loaded and signed correctly,
+which is what it was offered as; it is not evidence about the pathway that
+carries the effect.
+
+`tests/test_male_cns.py::test_sugar_beats_a_random_gustatory_population` now
+asserts the median margin so it cannot quietly rot. See `VERIFICATION.md`
+Finding 4 and §7.3.
+
 **Two results that do not look right, and I am not going to paper over them.**
 
 *(a) LB3d (high salt) drives MN9 harder than sugar does.* LB3d should be
@@ -310,14 +353,27 @@ excitatory here. This is a real limitation of connectome-only modelling, not
 a bug in the integrator, and it is exactly the kind of thing that makes
 sign assumptions load-bearing.
 
-*(b) A handful of VNC motor neurons saturate.* The most strongly driven cells
-under sugar activation are `MN11D` (342 Hz), `MNx01` (289 Hz), `MNad64`
-(282 Hz) — close to the 455 Hz ceiling the 2.2 ms refractory imposes. Shiu et
-al. modelled the brain only; MaleCNS includes the ventral nerve cord, and the
-extra recurrent loops appear to run away. Network-wide the model is still
-sparse (79,463 Hz summed over 164,587 neurons ≈ 0.5 Hz mean, ~2,600 neurons
-above 1 Hz), so this is a local instability, not global runaway — but any
-downstream use of VNC motor rates should treat those numbers as unphysiological.
+*(b) A handful of VNC motor neurons run far hotter than anything physiological.*
+The most strongly driven cells under sugar activation are `MN11D` (342–357 Hz),
+`INXXX137` (303–325 Hz), `MNx01` (268–295 Hz) and `MNad64` (282–312 Hz) across
+seeds. Shiu et al. modelled the brain only; MaleCNS includes the ventral nerve
+cord, and the extra recurrent loops appear to run away.
+
+**Corrected**: an earlier version of this paragraph said these cells were
+"close to the 455 Hz ceiling the 2.2 ms refractory imposes". They are not, and
+nothing in the model is. Measured across all 164,587 neurons under sugar drive:
+peak **320.8 Hz** (audit) and **357.0 Hz** (repair session, seeds 0 and 100),
+with **zero neurons above 400 Hz** and only 20–26 above 250 Hz. The refractory
+ceiling is 1/0.0022 = 454.5 Hz and the hottest cell in the network sits at 70–79%
+of it. "Saturate" was the wrong word; these cells are unphysiologically hot
+without being anywhere near the model's hard limit — a real 300 Hz motor neuron
+is already nonsense, which is the point worth making. See `VERIFICATION.md`
+Finding 6.
+
+Network-wide the model is still sparse (73,424–82,460 Hz summed over 164,587
+neurons ≈ 0.45–0.50 Hz mean, ~2,100–2,400 neurons above 1 Hz), so this is a
+local instability, not global runaway — but any downstream use of VNC motor
+rates should treat those numbers as unphysiological.
 
 ---
 
@@ -371,36 +427,61 @@ a shuffle which merely *silences* the network would make the control vacuous.
 
 ## 7. Cost
 
-Benchmarked in this container: Intel Xeon @ 2.10 GHz, 4 vCPU, 15 GB RAM,
-NumPy 2.4 / SciPy 1.17, single-threaded in the hot loop. **Not** the RTX 5070 Ti
-workstation — expect a Ryzen 5 3600 to be meaningfully faster, but the shape of
-the number will not change.
+**The figures below did not reproduce and have been replaced.** Two machines are
+involved and both are named, because the discrepancy is between them and is not
+explained by clock speed:
+
+* **machine A** — the original benchmark: Intel Xeon @ **2.10 GHz**, 4 vCPU,
+  15 GB, NumPy 2.4 / SciPy 1.17, Linux container.
+* **machine B** — an independent re-measurement (`VERIFICATION.md` Part F):
+  Intel Xeon @ **2.80 GHz**, 4 cores, 15 GB, numpy 2.4.6 / scipy 1.17.1,
+  Linux 6.18.44-fc-v33 container, nothing else running, peak RSS sampled from
+  `/proc` at 100 Hz.
+
+Neither is the RTX 5070 Ti workstation, and nothing here uses a GPU.
+Machine B is the *faster* CPU on paper and is **1.4–1.7× slower in every
+condition**, so the original numbers were optimistic for reasons that were not
+isolated — candidates are a different Xeon generation with less memory
+bandwidth (this loop is bandwidth-bound, so nominal clock predicts little), a
+different NumPy point release, or noisy neighbours in either container. **Take
+machine B's column as the number to plan against**, since it is the one that
+was measured with a documented method.
 
 Wall time per second of simulated biological time, whole 164,587-neuron
 network at the reference 0.1 ms internal step:
 
-| condition | wall / sim-second |
-|---|---|
-| nothing driven (network silent) | 3.3 s |
-| water GRNs driven | 5.0 s |
-| bitter GRNs driven | 5.7 s |
-| sugar + bitter | 7.8 s |
-| sugar GRNs driven | 8.9 s |
-| high-salt GRNs driven | 11.1 s |
+| condition | machine A (claimed) | **machine B (measured)** |
+|---|---|---|
+| nothing driven (network silent) | 3.3 s | **4.57 s** |
+| water GRNs driven | 5.0 s | not re-run |
+| bitter GRNs driven | 5.7 s | **8.27 s** |
+| sugar + bitter | 7.8 s | not re-run |
+| sugar GRNs driven | 8.9 s | **15.03 s** |
+| high-salt GRNs driven | 11.1 s | **15.47 s** |
 
-**So it does not run in real time, and it will not hit 30 fps.** A 1/60 s host
-frame costs 55–185 ms of wall time depending on how much of the network is
-firing; a 1/30 s frame costs 110–370 ms. That is **3–9 frames per second**,
-against the optic lobe's ~30 ms/step. Cost scales with activity, because the
-dense part of the step is fixed but the spike scatter is not.
+**So it does not run in real time, and it will not hit 30 fps** — the
+conclusion is unchanged and, on machine B, reinforced. On machine B a 1/60 s
+host frame costs **76–258 ms** and a 1/30 s frame **152–516 ms**, i.e.
+**4.0–13.1 fps** at 1/60 s and **2.0–6.6 fps** at 1/30 s, against the optic
+lobe's ~30 ms/step. The earlier claim of "3–9 fps" was for a 1/30 s frame; the
+measured figure there is **2.0–6.6 fps**, so the low end is roughly half what
+was claimed. Cost scales with activity (rest → salt is 3.4×), because the dense
+part of the step is fixed but the spike scatter is not.
+
+**Single-threaded: confirmed.** `cpu/wall = 1.01` in every condition on
+machine B — one core of four. No BLAS threading variable would help: the hot
+loop is elementwise NumPy plus a sparse scatter, not BLAS.
 
 This is inherent to the reference model rather than to the implementation: at
 dt = 0.1 ms, one 1/60 s frame is 167 internal steps, each touching all 164,587
 neurons. Raising dt would change the model.
 
 Memory: the built cache is a 197 MB `.npz` (24.5 M signed edges, float32 data +
-int32 indices); resident set during a run is about 1.2 GB, dominated by the CSR
-matrix plus the 18 × 164,587 float32 delay buffer.
+int32 indices). Resident set during a run was claimed at "about 1.2 GB"; machine
+B measures **0.64–0.72 GB**, so that figure was pessimistic by roughly half.
+The real high-water mark is not the run but the **cache build, at 2.52 GB**, and
+that is the number to size a machine against. Memory is a non-issue on anything
+with 8 GB, let alone the 32 GB target.
 
 Nothing here uses the GPU. The inner loop is a sparse gather-scatter over a few
 hundred spiking rows per 0.1 ms step plus half a dozen dense passes over
@@ -408,10 +489,48 @@ hundred spiking rows per 0.1 ms step plus half a dozen dense passes over
 plausible but is not a one-line change.
 
 **The 24/7 mini PC (i5-7200U, 2 cores, 16 GB).** It will hold the data — 16 GB
-is enough — but at roughly half the cores and lower clocks it would be slower
-still. A reduced mode is cheap to add later (build the cache with
-`min_synapses=5`, which drops 24.5 M edges to ~6.2 M) but I have not measured
-it and am not claiming it works.
+is enough, and the 2.52 GB cache build is the binding constraint — but at
+roughly half the cores and lower clocks it would be slower still. Not measured
+on that machine; nothing in this file was.
+
+### Reduced mode (`min_synapses=5`): measured, and it does not help
+
+This was written above as a hope, hedged but pointing somewhere. It has now
+been measured for the first time (`VERIFICATION.md` Part F, machine B) and the
+hope was wrong. **Edge pruning is not a route to real time and this section
+should not be read as suggesting it is.**
+
+The edge-count prediction was right: `min_synapses=5` gives 6,235,682
+connections before signing — the "~6.2 M" predicted — and 6,093,442 modelled
+edges, 24.8% of the full model's 24,539,704, in a 49 MB cache built in 11 s.
+
+The performance claim attached to it is dead:
+
+| | edges | wall / sim-s | 1/60 s frame | fps |
+|---|---:|---:|---:|---:|
+| full, sugar driven | 24,539,704 | 15.03 s | 250.5 ms | 3.99 |
+| **min5, sugar driven** | **6,093,442** | **15.30 s** | **255.0 ms** | **3.92** |
+| full, at rest | 24,539,704 | 4.57 s | 76.2 ms | 13.13 |
+| min5, at rest | 6,093,442 | 4.36 s | 72.7 ms | 13.76 |
+
+**Dropping 75% of the edges buys nothing**: 4.6% faster at rest, marginally
+*slower* under sugar drive (15.03 → 15.30 s, and 15.17–15.54 s over three
+seeds). This is consistent with the diagnosis above — the dense part of the step
+is fixed and the spike scatter is not the bottleneck — but it falsifies what was
+built on top of it. The cost is the six dense NumPy passes over 164,587 float32s
+at each of the 10,000 internal steps per simulated second. The only levers that
+would matter are **the neuron count and the 0.1 ms timestep**, and both of those
+*are* the reference model, so moving either makes it a different model rather
+than a faster one. That is a model change and it is out of scope here; see §13.
+
+min5 is therefore a **cheaper** model (49 MB rather than 197 MB), not a faster
+one, and it is a different model in a way worth knowing: sugar → MN9 does not
+merely survive pruning, it roughly doubles (14.50 → 33.00–38.00 Hz over three
+seeds) while bitter suppression stays exactly 0.00 Hz. Removing weak connections
+removes proportionally more inhibition than excitation from the path, so this is
+not a neutral downsampling — exactly as `MaleCNSConfig.min_synapses`' own
+docstring warns. The sugar population (34 neurons) and MN9 (`10331`, `16949`)
+both survive pruning intact.
 
 ---
 
@@ -462,9 +581,24 @@ relationship mirrors the existing one: flyvis is an external package that only
 `male_cns.py` imports. Checked, not assumed:
 
 ```
-$ grep -rl "flybrain.malecns\|from ..malecns" flybrain/
-flybrain/circuits/male_cns.py
+$ grep -rl "flybrain.malecns\|from ..malecns" flybrain/ --include=*.py
+flybrain/circuits/male_cns.py      <- the only real import, at line 596
+flybrain/io/motor.py               <- a docstring
+flybrain/malecns/__init__.py       <- the package's own files
+flybrain/malecns/__main__.py
+flybrain/malecns/dataset.py
+flybrain/malecns/lif.py
 ```
+
+**Corrected**: an earlier version of this block showed only the first line. The
+command emits six (and `flybrain/README.md` as a seventh without
+`--include=*.py`). The architectural claim is unaffected and still true — there
+is exactly one real import of the loader, `from ..malecns import dataset, lif`
+inside `_import_loader()` at `flybrain/circuits/male_cns.py:596`, and every
+other hit is either a docstring or one of the loader's own files — but the
+transcript shown as evidence for it had been tidied, which is not acceptable in
+a file whose whole point is that the evidence is real. See `VERIFICATION.md`
+Finding 8.
 
 **Things that needed deciding along the way.**
 
@@ -495,15 +629,31 @@ flybrain/circuits/male_cns.py
   reaching into private attributes. Purely additive; the existing optic-lobe
   tests pass unchanged.
 
-**Tests.** `tests/test_male_cns.py`, 15 tests, ~20 s, skipping cleanly when
+**Tests.** `tests/test_male_cns.py`, **16 tests, 31 s**, skipping cleanly when
 the cache is absent. They assert the sugar to MN9 result, the bitter
 suppression, the shuffle control (including that the shuffled network is still
-firing, so the control is not vacuous), that silent input produces exactly zero
-spikes network-wide, that the two circuits' ports do not collide, and that the
-MN9 bodies are still 10331 and 16949 after a cache rebuild.
+firing, so the control is not vacuous), the margin of sugar over a random
+gustatory population, that silent input produces exactly zero spikes
+network-wide, that the two circuits' ports do not collide, and that the MN9
+bodies are still 10331 and 16949 after a cache rebuild.
 
-Full suite with both models downloaded: **33 passed**. With neither: 7 passed,
-26 skipped. The pre-existing optic-lobe tests were not modified.
+Counts, all re-run and none quoted from memory:
+
+| | result | wall |
+|---|---|---|
+| full suite, both models downloaded | **41 passed** | 145 s |
+| flyvis weights present, MaleCNS cache absent | 18 passed, **23 skipped** | 76 s |
+| neither model present | 7 passed, **34 skipped** | 0.04 s |
+
+The pre-existing optic-lobe tests were not modified.
+
+**Corrected**: this paragraph previously said "15 tests, ~20 s" and "**33
+passed**. With neither: 7 passed, 26 skipped". Those counts predated the 7
+coupling tests that §11 goes on to describe, so they were stale when written;
+`VERIFICATION.md` Finding 8 caught it at 40, and the random-gustatory control
+added during the repair makes it 41. The audit also measured the full suite at
+1013 s, against 145 s here — that container was under CPU contention and this
+one was not, so treat 145 s as the floor and expect worse on a shared machine.
 
 ---
 

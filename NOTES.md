@@ -177,11 +177,45 @@ claw_tpGRN  dorsal_tpGRN     -> taste peg     (71)
 ```
 
 **(b) The taste-feeding connectome paper**, which splits FlyWire's lumped
-`LB3` into subtypes and does it on *both* FlyWire and MaleCNS: Tastekin,
-de Haan Vicente, Beresford, Morris, Beckett, Schlegel, Costa, Jefferis &
-Ribeiro, "From Sensory Detection to Motor Action: The Comprehensive
-*Drosophila* Taste-Feeding Connectome", bioRxiv 2025.08.25.671814 (published in
-*Cell*, 2026). Verbatim:
+`LB3` into subtypes and does it on *both* FlyWire and MaleCNS.
+
+> ### ⚠ The four quotations below are UNVERIFIED
+>
+> **The citation metadata is confirmed. The quotations are not.** Three
+> separate sessions have now tried to read the full text and all three were
+> blocked; nobody has re-read these four passages against the paper since they
+> were first transcribed. They are the single most load-bearing external
+> citation in this SDK — the entire sugar / bitter / water / salt assignment,
+> and therefore every downstream result, rests on them — so **a human should
+> check them against the paper.** They are left in place, unedited, because
+> removing them would hide what the assignment actually rests on.
+>
+> *Confirmed*, independently via OpenAlex and Europe PMC (`PPR1072256`):
+> DOI `10.1101/2025.08.25.671814`; title "From Sensory Detection to Motor
+> Action: The Comprehensive *Drosophila* Taste-Feeding Connectome"; authors
+> Tastekin, de Haan Vicente, Beresford, Morris, Beckett, Schlegel, Gkantia,
+> FlyEM Project Team, Cambridge Connectomics Group, Marin, Costa, Jefferis,
+> Ribeiro; dated 2025-08-25; published in *Cell*, 2026. The abstract is
+> readable and consistent with the argument made here — it describes GRN
+> clustering and "molecular identity mapping" across brain, cervical connective
+> and VNC — but it contains none of the four assignments and corroborates no
+> quotation.
+>
+> *Blocked*, every route tried, on three occasions (original session, audit,
+> and this repair): bioRxiv returns HTTP 429 to `…v1.full`,
+> `…v1.full-text` and the `content/biorxiv/early/…full.pdf` path Semantic
+> Scholar advertises, with and without a browser user-agent; Europe PMC's
+> `fullTextXML`, `fullTextHTML`, `supplementaryFiles` and `textMinedTerms`
+> routes all 404 for this preprint, its `fulltextRepo` PDF returns
+> `{"error":"PDF link has expired or is invalid"}`, and `europepmc.org`'s own
+> article page returns 403; `cell.com` returns 403. *Needed:* a network path to
+> bioRxiv, or institutional access to the *Cell* version.
+>
+> See `VERIFICATION.md` §4 and §7.5.
+
+Tastekin, de Haan Vicente, Beresford, Morris, Beckett, Schlegel, Costa,
+Jefferis & Ribeiro, bioRxiv 2025.08.25.671814 (published in *Cell*, 2026).
+Quoted as transcribed, **unverified**:
 
 > "Both LB3b and LB3c projection patterns matched the Gr64f-GAL4 positive
 > neurons and are, thus, likely to correspond to sweet-sensing GRNs, mediating
@@ -220,11 +254,25 @@ So, in MaleCNS v1.0 body counts:
 
 **Independent corroboration that LB3b really is the sugar type.** Without
 looking for it, the strongest output target of LB3b in my built graph is
-`AN13B002`. The paper, in a completely different section about wing GRNs, says:
-"A key downstream partner of WG2 is Dandelion, an AN typed as AN13B002 in the
-maleCNS … Dandelion is also a key downstream neuron of LB3b GRNs". That the
-graph reproduces their strongest-partner claim is a decent check that I loaded
-and signed the connectome correctly.
+`AN13B002` — re-derived by the audit, which confirmed rank 1 both per
+postsynaptic body (`30088 AN13B002_L`, 238 synapses) and per postsynaptic type
+(`AN13B002`, 427 synapses). The paper, in a completely different section about
+wing GRNs, says: "A key downstream partner of WG2 is Dandelion, an AN typed as
+AN13B002 in the maleCNS … Dandelion is also a key downstream neuron of LB3b
+GRNs". That the graph reproduces their strongest-partner claim is a decent check
+that I loaded and signed the connectome correctly.
+
+Two caveats on how much this carries, neither of which was here originally:
+
+* **This quotation is unverified too**, for the same reason as the four above.
+  The graph side of the check is solid and was independently re-derived; the
+  paper side is a transcription nobody has been able to re-read.
+* **It corroborates the weaker half of the sugar pair.** Driven alone, LB3c
+  gives 18.4 ± 3.3 Hz at MN9 and LB3b gives 4.5 ± 2.0 Hz, so nearly all of the
+  sugar → MN9 effect runs through LB3c and this check is on LB3b. It remains
+  good evidence that the connectome was loaded and signed correctly — which is
+  what it was offered as — and it is not evidence about the pathway that
+  carries the result. See §5 and `VERIFICATION.md` Finding 4.
 
 **The read-out neuron.** MN9 is annotated directly: type `MN9`, superclass
 `cb_motor`, two bodies — `10331` (`MN9_L`) and `16949` (`MN9_R`). MN9 extends
@@ -330,10 +378,8 @@ protocol over four seed families: **LB3c (23 neurons) 18.38 ± 3.30 Hz**,
 **LB3b (11 neurons) 4.50 ± 1.97 Hz**. LB3c alone is at or above the full
 34-neuron sugar pair (15.00 ± 6.43); adding LB3b does not increase the response.
 This matters for §3, because the AN13B002 corroboration there is a check on
-**LB3b** — the half of the pair contributing least to the result. The
-corroboration is still evidence that the graph was loaded and signed correctly,
-which is what it was offered as; it is not evidence about the pathway that
-carries the effect.
+**LB3b** — the half of the pair contributing least to the result. See §3, where
+that is now noted alongside the quotation.
 
 `tests/test_male_cns.py::test_sugar_beats_a_random_gustatory_population` now
 asserts the median margin so it cannot quietly rot. See `VERIFICATION.md`

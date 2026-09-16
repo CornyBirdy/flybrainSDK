@@ -4,7 +4,7 @@ An independent re-derivation of the claims in `NOTES.md`, run against the real
 MaleCNS v1.0 release on a fresh environment by a session that did not write the
 code.
 
-Status: Parts A–F complete. Part G in progress (marked `[PENDING]`).
+Status: complete. Parts A–G all run.
 
 ---
 
@@ -32,7 +32,54 @@ This is the *same class of machine the audited session used* (`NOTES.md` §12:
 
 ## 1. Verdict
 
-`[PENDING — written last]`
+**The SDK does what it claims about the data, the model and the results. It does
+not have a test suite that defends any of it.** Every number I could re-derive
+from the release matched exactly — 164,587 / 25,563,197 / 124,025,046, all eight
+transmitter counts, the 1,023,493 dropped edges, the MN9 identity — and I
+confirmed two things the original work asserted but never proved: that `weight`
+really is a synapse count (cross-checked against `body-stats` for 100% of bodies,
+r = 0.9988) and that no strength column exists in *any* of the eleven release
+files. All nine LIF constants are bit-identical to `philshiu/Drosophila_brain_model`,
+with zero undocumented deviations, and the integrator is correct — its
+exponential-Euler step agrees with an oversampled reference to 4×10⁻¹² V and its
+transmitter signs demonstrably flow through to firing rates. The headline result
+reproduces on fresh seeds (13.76 ± 2.73 Hz vs their 13.60 ± 2.31), and so do the
+negative controls: bitter alone and sugar+bitter give exactly 0.00 Hz in 4/4 seeds
+while the network stays *more* active than under sugar alone, and MN9 is exactly
+zero in all six degree-shuffles including three seeds they never ran. The two
+anomalies they flagged against their own interest both reproduce, as does the
+coupling pedestal they deliberately wrote a test to preserve. `NOTES.md` is an
+unusually honest document; almost everything it volunteers against itself is true.
+
+The failure is in Part E, and it is serious. **I randomly permuted the
+postsynaptic column of the weight table — destroying 99.5% of the connectome's
+wiring — and all 15 tests passed.** The reason is that the assertion the suite's
+own docstring calls "the load-bearing result" is `sugar > 1.0` over a 0.5 s
+window, where a *single spike* registers as 2.0 Hz. The real effect is 22–36 Hz.
+The threshold sits an order of magnitude below the signal it is supposed to
+detect, so it cannot distinguish a working connectome from noise, and it passes at
+the default seed only by luck — at seed 3 the same mutation would have failed it.
+The shuffle test does not save it, because shuffling an already-random graph still
+yields zero. Four of five mutations were caught; the one that was missed is the
+one that matters most, because it is the only one that attacks the connectome
+itself rather than the labels attached to it.
+
+Beyond that, a cluster of quantitative claims is overstated rather than wrong:
+the graph is described as "the whole traced connectome, not a subset" when the
+simulated graph is a 96% subset; `shuffle_preserving_degree` does not preserve
+degree; nothing approaches the "455 Hz ceiling" the VNC anomaly invokes; the fps
+and RSS figures do not reproduce; and the reduced mode §7 proposed as a path to
+real-time gives no speedup at all. Separately, the sugar→MN9 result is less
+specific than presented — driving 34 *random* gustatory neurons lights MN9 up in
+5/5 draws, and LB4b gets within 25% of sugar — so sugar wins by a factor of ~3.6,
+a quantitative margin rather than a categorical one. And the single most
+load-bearing external citation, the Tastekin et al. quotations that fix the entire
+sugar/bitter assignment, **I could not read**, because bioRxiv blocks this
+container exactly as it blocked the original session.
+
+Bluntly: the science is sound and honestly reported, the engineering is clean, and
+I would trust the numbers. I would not trust the test suite to tell anyone when
+those numbers stop being true — which is precisely what a test suite is for.
 
 ---
 
@@ -386,6 +433,61 @@ weak connections removes proportionally more inhibition than excitation from the
 path, so min5 is not a neutral downsampling — it is a different model, as
 `MaleCNSConfig.min_synapses`' own docstring warns.
 
+### Part G — coupling (stage 3)
+
+flyvis 1.2.0 installed cleanly on CPU (torch 2.14.0+cpu) and its pretrained
+weights downloaded without trouble. No CUDA needed, as expected.
+
+**Coupling is off by default — all four guards verified:**
+
+```
+default MaleCNSCircuit inputs: SUGAR_GRN, BITTER_GRN, WATER_GRN, HIGH_SALT_GRN
+T4T5_DRIVE in default inputs                                        False
+set_input(T4T5_DRIVE) on a default circuit -> KeyError, says "hypothesis"   True
+OpticLobeToMaleCNS(eye, non-opted-in)      -> ValueError, says "hypothesis"  True
+FlyBrain(circuits=["optic_lobe","male_cns"]).input_ports:
+    VISUAL_FIELD, SUGAR_GRN, BITTER_GRN, WATER_GRN, HIGH_SALT_GRN
+    -> T4T5_DRIVE present: False       VISUAL_FIELD: True
+    -> YAW present: True               MN9_L present: True
+```
+
+Loading both circuits together leaves them independent, exactly as §11 claims.
+
+**The static-scene pedestal reproduces, and it is worse than described.**
+3 MaleCNS seeds, 25 frames of a drifting panorama at 60 fps:
+
+| condition | T4/T5 drive | HSE_L − HSE_R (mine) | `NOTES.md` §11 |
+|---|---:|---:|---:|
+| scene drifts right | 270.57 Hz | **+28.18** | +30.3 |
+| scene drifts left | 269.59 Hz | **−20.19** | −27.0 |
+| **static scene** | **267.57 Hz** | **+4.45** | −4.8 |
+
+**static / moving drive ratio = 0.989.** A still image stages 98.9% as much
+T4/T5 drive as a moving one. §11's "a static scene stages essentially as much
+T4/T5 drive as a moving one" is exactly right — the bridge carries almost no
+motion information in its magnitude. The direction signal is a ±20–28 Hz
+imbalance riding on a ~268 Hz motion-independent pedestal, i.e. roughly 8% of
+the signal.
+
+The direction selectivity itself also reproduces: per-seed asymmetries are
+right `+27.94 / +27.71 / +28.88`, left `−23.22 / −16.97 / −20.38`, static
+`+8.73 / +6.49 / −1.87`. The three conditions do not overlap across seeds, as
+§11 claims. And the HS cells do sit saturated near 300 Hz (HSE_L/R 296–329 Hz in
+every condition), confirming §11's second self-criticism.
+
+**`tests/test_coupling.py` does genuinely assert the pedestal** — line 153:
+
+```python
+assert static_drive > 0.5 * moving_drive, (
+    "the static-scene pedestal has gone away - if that was deliberate, "
+    "update this test and the coupling docstring")
+```
+
+So silently fixing the pedestal *would* fail the suite. That is real and
+commendable. But the threshold is loose: the actual ratio is 0.989 and the test
+only requires >0.5, so a partial fix that halved the pedestal would still pass
+unnoticed. It catches a complete fix, not an improvement. See Finding 10.
+
 ---
 
 ## 3. Did not reproduce
@@ -452,13 +554,119 @@ path, so min5 is not a neutral downsampling — it is a different model, as
   leans on Tastekin et al. for the subtype split. The structure of the argument is
   sound; its key premise is the unverified quote above.
 * ~~`min_synapses=5`~~ — now measured, see Part F.
-* **The coupling pedestal** — `[PENDING, Part G]`.
+* ~~The coupling pedestal~~ — now measured, see Part G.
 
 ---
 
 ## 5. Findings
 
-`[PENDING — written last]`
+Ordered by how much they matter. **Nothing here has been fixed** — repair is a
+separate job, and mixing the two would make this audit unreadable.
+
+**1. The suite's load-bearing assertion is an order of magnitude too weak, and a
+fully randomised connectome passes it.** (Part E, mutation 3.) `test_sugar_drives_mn9`
+asserts `sugar > 1.0` Hz over `DURATION = 0.5 s`. One spike in that window reads
+as 2.0 Hz, so the test cannot separate a single accidental spike from the real
+22–36 Hz response. Permuting `body_post` leaves 0.502% of edges intact and all 15
+tests pass; at seed 3 the same mutation would have failed, so it passes by luck at
+the default seed. `test_shuffling_the_connectome_abolishes_the_result` is vacuous
+under the same mutation (shuffling noise still gives zero, and `rates.sum() =
+8,748 > 100`). *Where:* `tests/test_male_cns.py:59`, `DURATION` at line ~40.
+
+**2. Documentation states the model runs on a graph it does not run on.**
+`flybrain/circuits/male_cns.py:12-18` says "The graph this circuit runs on has
+164,587 neurons / 25,563,197 connections / 124,025,046 synapses … which is the
+whole traced connectome, **not a subset**." It is a subset: the built matrix holds
+**24,539,704 connections and 120,793,200 synapses**, because 1,023,493 unsigned
+edges are dropped. The drop is correctly disclosed in `dataset.py:102` and
+`NOTES.md` §2, so this reads as carelessness rather than spin — but the headline
+figure describes the release, not the model. Same overstatement at `README.md:72`
+and `flybrain/README.md:307-308`.
+
+**3. `shuffle_preserving_degree` does not preserve degree.** Its docstring claims
+out-degree, synapse count and sign are "untouched" and the in-degree sequence is
+"untouched too". `sum_duplicates()` merges colliding pairs: nnz falls 24,539,704 →
+24,466,226 (**73,478 edges, 0.30%**), and per-neuron in-degree changes by up to
+**854**. Synapse mass and sign *are* preserved exactly. The control's conclusion
+survives (MN9 = 0 in all six shuffles), but the null is less matched than claimed,
+on top of the 8.8× total-drive drop `NOTES.md` §6 already admits.
+*Where:* `flybrain/malecns/dataset.py`, `shuffle_preserving_degree`.
+
+**4. `sugar → MN9` is not sugar-specific, and the notes do not say so.** On the
+real graph, 34 *random* gustatory neurons drive MN9 in **5/5 draws** (1.67–7.50 Hz,
+mean 3.90); `LB4b` (8 neurons) reaches **11.00 Hz** against sugar's 14.17. Sugar
+wins by ~3.6× over the random-gustatory null — real, but quantitative, not
+categorical. The shuffle control rules out "the simulator lights up MN9 for any
+input"; it does not rule out "the real wiring lights up MN9 for many inputs", and
+that is partly true. Bitter and water genuinely give zero, so specificity exists in
+*some* directions. Relatedly, the effect is mostly **LB3c** (18.00 Hz alone) not
+LB3b (3.00 Hz alone) — which means §3's AN13B002 corroboration validates the
+weaker half of the sugar pair. This control is not in `NOTES.md`; I added it.
+
+**5. `min_synapses=5` gives no speedup — the proposed route to real-time does not
+work.** (Part F, first measurement of it.) 24,539,704 → 6,093,442 edges (24.8%)
+leaves wall time per simulated second unchanged: 15.03 s → **15.30 s** under sugar
+drive, 4.57 s → 4.36 s at rest. The bottleneck is the dense per-step passes over
+164,587 neurons, not the sparse scatter. `NOTES.md` §7 was right that "~6.2 M"
+edges result and right about the mechanism, but the hope attached to it is dead.
+The biology survives pruning (sugar → MN9 rises to 33–38 Hz, bitter suppression
+still exactly zero), so min5 is a cheaper model, not a faster one.
+
+**6. Anomaly (b) is overstated.** §5 says a handful of VNC motor neurons "saturate",
+"close to the 455 Hz ceiling the 2.2 ms refractory imposes". Reproduced peak across
+all 164,587 neurons is **320.8 Hz**, with **zero neurons above 400 Hz** and only 20
+above 250 Hz. The same cell types are implicated (`MN11D`, `MNad64`, `MNx01`) and
+they do run hot, but nothing approaches the refractory ceiling and "saturate" is the
+wrong word.
+
+**7. Cost and memory figures do not reproduce.** §7's wall times are **1.4–1.7×
+optimistic** relative to this machine (sugar 8.9 s claimed vs 15.03 s measured),
+despite §7 naming a *slower* CPU (2.10 GHz vs 2.80 GHz here), so clock speed does
+not explain it. §7's "3–9 fps" becomes **2.0–6.6 fps** at 1/30 s here. Conversely
+§7's "about 1.2 GB" resident is pessimistic: I measure **0.64–0.72 GB**. Peak RSS
+overall is the cache build at 2.52 GB.
+
+**8. `NOTES.md` §10's evidence is stale or idealised in two places.** The test
+counts ("33 passed"; "7 passed, 26 skipped") predate the 7 coupling tests that §11
+goes on to describe — the suite is **40 tests**, all 40 passing here, with 22
+skipping cleanly when the cache is absent. And the quoted `grep -rl` transcript
+shows one line of output where the real command emits six. The *claim* is true —
+exactly one real import of the loader exists, at
+`flybrain/circuits/male_cns.py:573` — but the evidence shown for it was tidied.
+
+**9. The script behind the headline numbers was never committed.**
+`NOTES.md` §5 cites `scratch/sanity_check.py` for the §5/§6 tables; `scratch/` is
+gitignored and the file exists in no commit. So the exact protocol — trial count,
+seeding, whether MN9 means the mean of both bodies — cannot be checked, which is
+the most likely reason exact per-seed magnitudes do not reproduce even though the
+statistics do. (§5 and §6 also disagree with each other at 150 Hz: 13.60 vs 10.50.)
+
+**10. The coupling pedestal test catches a fix but not an improvement.**
+`tests/test_coupling.py:153` asserts `static_drive > 0.5 * moving_drive`. The
+measured ratio is **0.989**, so a change that halved the pedestal — a large
+improvement — would still pass silently. The test's intent is right and its
+existence is genuinely good practice; the bound is just far from the value it
+guards.
+
+**11. Glutamate: the suite catches an inverted sign, but not through the test you
+would expect.** Flipping glutamate to excitatory fails
+`test_bitter_alone_does_not_drive_mn9` (MN9_L at 144 Hz) and
+`test_bitter_suppresses_the_sugar_response` (54 → 154 Hz). It does **not** fail
+`test_sugar_drives_mn9`, which still passes, because MN9 only moves 14.17 → 24.50 Hz
+even as the network goes into near-global runaway (83,646 → 9,556,156 Hz). The
+bitter tests are doing the load-bearing work here, which is worth knowing if anyone
+ever relaxes them. *(I predicted mid-audit that the whole suite would survive this
+mutation. That prediction was wrong and the record above corrects it.)*
+
+**12. Nothing Windows- or GPU-specific was exercised at all.** See §4. This is not
+a finding against the SDK; it is a finding about the audit's coverage, and it is
+listed here so it is not mistaken for a clean bill of health on the target machine.
+
+**Not findings, recorded so the next reader does not re-litigate them:** the GRN
+and MN9 identities are derived at load time, not hardcoded (good design, verified);
+assertions are structural rather than magnitudes copied from prior runs (also good
+— they do not pass by construction); the two literal-value tests pin data-derived
+values that I independently re-derived, and mutations 4 and 5 prove they fire.
 
 ---
 

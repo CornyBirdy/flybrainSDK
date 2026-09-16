@@ -817,3 +817,283 @@ knowing generally: what reliably catches a read-out swap is the identity pin
 rate tests catch it only when the substitute is not itself strongly driven. Part
 E's mutation 5 did not name its substitute, so its 3-failure row and my
 4-failure row are also not strictly the same mutation.
+
+### 7.2 Fix 2 — overstated and wrong documentation
+
+Commit `12fa140`. Text only; the only `.py` edits are docstrings.
+
+| finding | where | what it says now |
+|---|---|---|
+| 2 | `flybrain/circuits/male_cns.py`, `README.md`, `flybrain/README.md` | Both figure sets, labelled: release 25,563,197 / 124,025,046; **simulated graph 24,539,704 / 120,793,200**, a 96% subset, with the 1,023,493 unsigned-edge drop named as the reason and all 164,587 neurons noted as surviving |
+| 3 | `shuffle_preserving_degree` docstring | What it preserves exactly (total synapse mass and every edge's sign) and what it does not (either degree sequence) |
+| 6 | `NOTES.md` §5 anomaly (b) | Peak 320.8 Hz (audit) / 357.0 Hz (here), zero neurons above 400 Hz, ceiling 454.5 Hz; "saturate" removed, the anomaly kept |
+| 7 | `NOTES.md` §7, both READMEs, `male_cns.py` | Machine A and machine B both named, B's measured column marked as the one to plan against; 2.0–6.6 fps at 1/30 s; 0.64–0.72 GB resident with the 2.52 GB cache build as the real high-water mark |
+| 5 | `NOTES.md` §7 | A new subsection saying plainly that `min_synapses=5` gives no speedup; every suggestion that it is a route to real time removed |
+| 8 | `NOTES.md` §10 | Real test counts, all re-run; the real `grep -rl` output, six lines |
+
+**Finding 3 goes further than the audit found.** Section 5 says `sum_duplicates()`
+"changes in-degree by up to 854" and that out-degree is preserved. Out-degree is
+not preserved either: merging two edges that collide on a `(pre, post)` pair
+removes one from the *presynaptic* neuron's out-degree as well. Measured at
+seed 7 on the shipped graph:
+
+```
+nnz         24,539,704 -> 24,466,652   (73,052 merged, 0.30%)
+in-degree   28,583 neurons changed, by up to 836
+out-degree  28,981 neurons changed, by up to 897
+sum(|data|) 120,793,200 -> 120,793,200   (exact)
+sum(data)    26,149,288 ->  26,149,288   (exact)
+```
+
+So the docstring's *both* claims were wrong, and the two totals are what is
+actually preserved. (The audit's 854 against my 836 is the same phenomenon at a
+different seed or RNG draw; nothing hangs on the exact figure.)
+
+**Finding 8's test counts, re-run rather than recalled:**
+
+| | result | wall |
+|---|---|---|
+| both models present | **41 passed** | 145 s |
+| flyvis weights present, MaleCNS cache absent | 18 passed, 23 skipped | 76 s |
+| neither model present | 7 passed, 34 skipped | 0.04 s |
+
+41 rather than the audit's 40 because of the test added in §7.3. Note the audit
+measured the full suite at **1013 s** and it is **145 s** here: that container
+was under CPU contention and this one was not. 145 s is a floor, not a typical
+figure.
+
+**On Finding 7, one thing I could not settle.** The audit could not isolate why
+machine A's wall times were 1.4–1.7× optimistic despite naming a slower CPU, and
+neither could I — I have only machine B. `NOTES.md` §7 now names both machines
+and their measured columns side by side and says which to plan against, which is
+the best that can be done without machine A. The discrepancy itself is unexplained.
+
+### 7.3 Fix 3 — the specificity claim
+
+Commits `c139cd7` (the test) and `12fa140` (the text). Restated in `NOTES.md` §5,
+both READMEs and the `male_cns.py` module docstring: MN9 is not a sugar-specific
+read-out, sugar wins by a measured factor, and bitter and water are genuinely
+zero so specificity is real in some directions.
+
+`tests/test_male_cns.py::test_sugar_beats_a_random_gustatory_population` asserts
+the margin over the median of five fixed random gustatory draws. It costs ~12 s
+and it fires under all five mutations, which is why four of the five rows in
+§7.1's table moved.
+
+**Two measurements here go beyond Finding 4, and both weaken it further.**
+
+*The random-gustatory null is heavy-tailed; the audit's five draws did not show
+it.* Over **24 draws** at the suite's protocol (MN9_L, 0.5 s, 150 Hz, LIF seed 0):
+
+```
+median 3.00 Hz, mean 19.83, min 0.00, max 156.00
+draws >= sugar's own 22.00 Hz:  5 / 24
+draws >= 10 Hz:                 7 / 24
+```
+
+The 156 Hz draw put the whole network at 901,044 Hz — near-global runaway,
+12× the sugar condition's 75,238 Hz. So "sugar beats a random gustatory set"
+is true of the *typical* set and false of about one in five. The test asserts the
+median for that reason, and its docstring says so; a test asserting every draw
+would be asserting something untrue.
+
+*Most of the gustatory pool is not a taste input to the proboscis at all.* Of the
+1,428 gustatory neurons: **768 leg bristle, 385 wing bristle, 163 labellar**, 60
+taste peg, 48 pharyngeal. A random gustatory draw is mostly limbs, which makes
+this null *easier* to beat than the more meaningful labellar-only null. **I did
+not run the labellar-only null** — it is listed in `NOTES.md` §13 as an open item.
+
+*The LB3c/LB3b asymmetry is confirmed and is larger than Finding 4 reports.* At
+the audit's own protocol (MN9 as the mean of both bodies, 1 s, four seed families):
+
+| driven alone | MN9 |
+|---|---:|
+| sugar pair (LB3b + LB3c, 34) | 15.00 ± 6.43 |
+| **LB3c (23)** | **18.38 ± 3.30** |
+| LB3b (11) | 4.50 ± 1.97 |
+| LB4b (8) | 7.50 ± 4.23 |
+
+LB3c alone is at or above the full pair, so adding LB3b does not increase the
+response. §3's AN13B002 corroboration is therefore a check on the half of the
+pair that carries almost none of the effect — noted in `NOTES.md` §3 beside the
+quotation, and §5 states the numbers. LB4b at 7.50 against sugar's 15.00 is a
+factor of 2 with overlapping spreads; the audit's single measurement had it at
+11.00 against 14.17, a factor of 1.3. Either way it is not categorical.
+
+### 7.4 Fix 4 — the uncommitted script
+
+Commit `1cdc8d2`. `scripts/sanity_check.py`, reconstructed from this audit's
+reproduction, runs the §5 conditions, the anomaly (b) hot-cell list, the §6
+dose-response, the §6 shuffle control and the random-gustatory control. Verified
+end to end at both protocols.
+
+**It settles the ambiguity Finding 9 identified.** At §5's stated protocol
+(5 trials × 1 s, 150 Hz, seed 0):
+
+```
+                       MN9, both bodies      MN9_L
+  baseline              0.00 +/- 0.00      0.00 +/- 0.00
+  sugar (LB3b/c)       14.70 +/- 2.25     28.40 +/- 3.50
+  bitter (LB1a-e)       0.00 +/- 0.00      0.00 +/- 0.00
+  sugar + bitter        0.00 +/- 0.00      0.00 +/- 0.00
+  water (LB3a)          0.00 +/- 0.00      0.00 +/- 0.00
+  high salt (LB3d)     15.70 +/- 2.01     30.20 +/- 3.76
+```
+
+against `NOTES.md` §5's 0.00 / 13.60 ± 2.31 / 0.00 / 0.00 / 0.00 / 16.80 ± 1.59.
+**MN9 in §5 means the mean of the two bodies**, and that is why §5 and §6
+disagree at 150 Hz — §6 is not using the same read-out convention, and the two
+differ by about 2× because MN9_R is nearly silent. The script reports all three
+conventions so the question cannot recur. It does not make per-seed magnitudes
+reproduce across environments; §3's first bullet stands.
+
+### 7.5 Fix 5 — the unverified citation
+
+Commit `1cdc8d2`. **Tried again, blocked again**, on every route:
+
+```
+biorxiv.org  …/2025.08.25.671814v1.full                         429
+             …/2025.08.25.671814v1.full-text                    429
+             content/biorxiv/early/2025/08/25/…full.pdf         429   (plain and browser-UA)
+europepmc    rest/PPR1072256/fullTextXML                        404
+             rest/PPR/PPR1072256/fullTextXML                    404
+             rest/PPR1072256/fullTextHTML                       404
+             rest/PPR1072256/supplementaryFiles                 404
+             rest/PPR1072256/textMinedTerms                     404
+             api/fulltextRepo?pprId=PPR1072256…                 403  "PDF link has expired or is invalid"
+             europepmc.org/article/PPR/PPR1072256                403
+cell.com     cell/fulltext/…                                    403
+```
+
+So that is three sessions and three failures. The four quotations in `NOTES.md`
+§3 now sit under an explicit **⚠ UNVERIFIED** warning that lists the confirmed
+metadata separately (DOI, title, full author list including Gkantia, the FlyEM
+Project Team and the Cambridge Connectomics Group, and Marin, all via OpenAlex
+and Europe PMC `PPR1072256`; date 2025-08-25), records every blocked route, and
+says a human should check them. They are left in place and unedited.
+
+Two things added beyond the brief. The **abstract is readable** and I checked it:
+it describes GRN "connectivity-based clustering, molecular identity mapping, and
+sexual dimorphism analysis" across brain, cervical connective and VNC, which is
+consistent with the argument §3 makes — but it contains none of `Gr64f`,
+`Gr33a`, `ppk28`, `Ir7c`, `LB3b`, `LB3c`, "sweet", "bitter", "water" or "salt",
+so it corroborates no quotation. And the **AN13B002 corroboration in §3 is a
+fifth quotation** from the same paper, which the audit did not flag as such; it
+is now marked the same way.
+
+### 7.6 Fix 6 — packaging
+
+Commit `6f66807`. `flyvis` is no longer a hard dependency. Both circuits are
+extras (`optic_lobe`, `male_cns`) over a numpy-only core, plus `coupling` for the
+two together and `all` for everything.
+
+Verified in a **clean venv**, not just asserted:
+
+```
+pip install .          ->  flybrain, numpy, pip, setuptools.  Nothing else.
+import flybrain        ->  works from outside the repo, against the installed
+                           copy; exposes both circuit names and all ports;
+                           loads none of flyvis/torch/scipy/pandas/pyarrow
+MaleCNSCircuit()       ->  ImportError: "needs pandas, pyarrow and scipy.
+                           Install them with 'pip install flybrain[male_cns]'"
+OpticLobeCircuit()     ->  ImportError: "needs PyTorch. Install it from
+                           https://pytorch.org"
+pytest, bare install   ->  7 passed, 34 skipped, 0 errors
+pytest, full install   ->  41 passed
+```
+
+**The change exposed two real defects, both fixed in the same commit.**
+
+*`_import_loader()` did not actually check the stack.* `flybrain/malecns/*`
+imports pandas, pyarrow and scipy lazily inside the functions that use them, so
+the loader imports fine without them and fails later — a bare install got
+`ModuleNotFoundError: No module named 'pandas'` raised from inside `load_cache`,
+not the message telling it which extra to install. That message is now the only
+thing standing between a bare install and knowing what to do, so the three
+modules are probed in `_import_loader`, where the explanation lives.
+
+*The suite did not skip cleanly on a bare install — it errored 15 times.*
+`_connectome_available()` in `tests/conftest.py` checked for the cache but not
+for the stack, and the cache lives in `~/.cache` and outlives any virtualenv. So
+a numpy-only install with a cache left from a previous environment reported
+`8 passed, 18 skipped, 15 errors`. Both guards now check their stack as well as
+their model, and both skip reasons name the extra. This was only reachable
+because male_cns became an extra, and the brief's "verify the suite still skips
+cleanly" is what caught it.
+
+**Also fixed here: Finding 10**, which is Fix 1's defect class in
+`tests/test_coupling.py:153`. `static_drive > 0.5 * moving_drive` guarded a
+measured ratio of **1.0067** (static 67.86 Hz against moving 67.41 Hz — a still
+image stages very slightly *more* T4/T5 drive than a drifting one), so a change
+cutting the pedestal by 40% would have passed silently. The bound is now
+**0.9**, with the measurement in a comment. It can sit that close because the
+staged drive comes from flyvis and is identical across MaleCNS seeds; only the
+downstream spiking is stochastic. Part G's asymmetries reproduced bit-for-bit
+(+27.94 / +27.71 / +28.88 rightward, −23.22 / −16.97 / −20.38 leftward,
++8.73 / +6.49 / −1.87 static), so this is the same measurement, not a new one.
+My absolute drive figures are ~4× smaller than Part G's 270.57 / 267.57 Hz —
+a different summation over the eight subtypes — but the ratio, which is what the
+test guards, agrees: 1.007 here against 0.989 there.
+
+### 7.7 What was not done, and what I got wrong
+
+Recorded here rather than dropped.
+
+**Not done.**
+
+1. **`DURATION` was not lengthened.** The brief asked me to weigh it against
+   runtime and I decided against, with the measurement and the reasoning in the
+   constant's comment. If you disagree, 1.0 s gives 25–34 Hz over seeds 0–4 and
+   costs this file ~19 s → ~45 s.
+2. **The labellar-only random null was not run.** It is the more meaningful
+   version of the specificity control (1,153 of the 1,428 gustatory neurons are
+   leg and wing), and running it would have strengthened or weakened Finding 4
+   further. Listed in `NOTES.md` §13.
+3. **Nothing about Finding 7's cause was resolved.** I have only machine B.
+4. **`min_synapses=5` was not re-measured.** Part F's figures are cited as the
+   audit's, on the audit's machine. They are consistent with everything I did
+   measure, but I did not rebuild that cache.
+5. **The four quotations remain unverified.** Fix 5 tried and failed; that is a
+   network and access problem, not something a repair can close.
+6. **Nothing Windows- or GPU-specific was exercised**, exactly as in §4. This
+   repair ran on the same class of container as the audit.
+7. **`test_coupling.py`'s other loose bounds were left alone.** `rightward > 5.0`
+   and `leftward < -5.0` guard measured values of +27.71…+28.88 and
+   −16.97…−23.22, so they are 3–5× too loose by the same standard as Fix 1. I
+   left them because those quantities depend on MaleCNS spiking and vary 1.7×
+   across the only three seeds anyone has measured; tightening on three samples
+   risks a flaky suite, which is a worse failure than a loose bound. Tightening
+   them safely needs a wider seed sweep, which nobody has run. They are not an
+   audit finding; this paragraph exists so that the omission is deliberate and
+   visible rather than silent.
+
+**What I got wrong, corrected in the record above.** My first mutation 5
+substitute was `MN11D`, the hottest cell type in the network rather than an
+arbitrary motor pair, which made the mutation artificially hard to catch (2
+failures rather than 4). Re-run with a quiet pair. And my permutation for
+mutation 3 is not the audit's, so those two rows are not strictly comparable —
+both details are in §7.1.
+
+**No numerical result changed, and that is checked rather than asserted.** I
+parsed both changed modules under `flybrain/` at `5e04b8c` and at HEAD, stripped
+comments and docstrings via the AST, and diffed what was left. The entire
+executable difference across the whole repair is three lines:
+
+```
+flybrain/circuits/male_cns.py:  + import pandas
+                                + import pyarrow
+                                + import scipy.sparse
+flybrain/malecns/dataset.py:    executable code IDENTICAL
+```
+
+Those three are the dependency probe in `_import_loader` (Fix 6). They run
+before any model object exists and can only change *which exception* is raised
+when the stack is absent. Everything else in `flybrain/` is docstrings and
+comments. The LIF constants, the sign map, `INPUT_POPULATIONS`,
+`OUTPUT_NEURONS`, the cache builder and the integrator are byte-identical in
+behaviour.
+
+Confirming it end to end: the cache rebuilt to the same
+**164,587 / 24,539,704 / 120,793,200**, and MN9_L under sugar at the suite's
+protocol is still **22.00 Hz at seed 0** — the same value Part E measured before
+any of this.

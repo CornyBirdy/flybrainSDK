@@ -4,7 +4,7 @@ An independent re-derivation of the claims in `NOTES.md`, run against the real
 MaleCNS v1.0 release on a fresh environment by a session that did not write the
 code.
 
-Status: Parts A–E complete. Parts F–G in progress (marked `[PENDING]`).
+Status: Parts A–F complete. Part G in progress (marked `[PENDING]`).
 
 ---
 
@@ -318,6 +318,74 @@ I re-derived both from the annotation table independently. They are legitimate
 regression pins, and mutations 4 and 5 show they fire. The problem is not
 tautological assertions; it is that the one quantitative threshold is far too low.
 
+### Part F — cost, on this hardware
+
+Measured with nothing else running. 1 s of simulated time per condition, peak RSS
+sampled from `/proc` at 100 Hz, thread use from `utime+stime / wall`.
+
+**Full model (`min_synapses=1`), 164,587 neurons, 24,539,704 edges:**
+
+| condition | wall / sim-s | 1/60 s frame | 1/30 s frame | cpu/wall | peak RSS | `NOTES.md` §7 |
+|---|---:|---:|---:|---:|---:|---:|
+| at rest | 4.57 s | 76.2 ms | 152.3 ms | 1.01 | 0.64 GB | 3.3 s |
+| bitter driven | 8.27 s | 137.9 ms | 275.8 ms | 1.01 | 0.65 GB | 5.7 s |
+| sugar driven | 15.03 s | 250.5 ms | 501.0 ms | 1.01 | 0.64 GB | 8.9 s |
+| high salt driven | 15.47 s | 257.8 ms | 515.5 ms | 1.01 | 0.65 GB | 11.1 s |
+
+* **Single-threaded, confirmed.** `cpu/wall = 1.01` in every condition — one core
+  of four. §7's "single-threaded in the hot loop" is correct. No BLAS threading
+  variables were set, and none would help: the hot loop is elementwise NumPy and
+  a sparse scatter, not BLAS.
+* **Memory is a non-issue.** Peak RSS 0.64–0.72 GB, well under §7's "about
+  1.2 GB", and nowhere near either 15 GB or the target's 32 GB. The cache build
+  peaked at 2.52 GB, which is the real high-water mark.
+* Cost scales with activity exactly as §7 says (rest → salt is 3.4×).
+
+**Reduced mode `min_synapses=5` — measured for the first time. It does not work.**
+
+```
+build: 11 s.  163,903 neurons, 6,235,682 connections, 6,093,442 modelled edges
+       (24.8% of the full model's), 87,906,400 signed synapses, 49 MB cache
+```
+
+`NOTES.md` §7 predicted "~6.2 M" edges: **6,235,682 connections before signing.**
+That prediction is right. The performance hope attached to it is not:
+
+| | edges | wall / sim-s | 1/60 s frame | fps |
+|---|---:|---:|---:|---:|
+| full, sugar | 24,539,704 | 15.03 s | 250.5 ms | 3.99 |
+| **min5, sugar** (seed 0) | **6,093,442** | **15.30 s** | **255.0 ms** | **3.92** |
+| min5, sugar (seed 100) | | 15.54 s | 259.0 ms | 3.86 |
+| min5, sugar (seed 200) | | 15.17 s | 252.9 ms | 3.95 |
+| full, at rest | 24,539,704 | 4.57 s | 76.2 ms | 13.13 |
+| min5, at rest | 6,093,442 | 4.36 s | 72.7 ms | 13.76 |
+
+**Dropping 75% of the edges buys no speedup** — at rest it is 4.6% faster, under
+sugar drive it is marginally *slower*. This is consistent with §7's own diagnosis
+("the dense part of the step is fixed but the spike scatter is not"), but it
+falsifies the hope built on top of it. The cost is the six dense NumPy passes
+over 164,587 float32s at every one of the 10,000 internal steps per simulated
+second; the sparse gather-scatter is not the bottleneck, so pruning edges cannot
+help. **Edge pruning is not a route to real-time embodiment.** The levers that
+would matter are the neuron count and the 0.1 ms timestep — and both are the
+reference model itself, so changing either makes it a different model.
+
+**The biology survives the pruning**, which makes min5 a legitimate cheaper model
+even though it is not a faster one:
+
+| | full | min5 seed 0 | seed 100 | seed 200 |
+|---|---:|---:|---:|---:|
+| sugar → MN9 | 14.50 Hz | **33.00** | **38.00** | **36.50** |
+| bitter → MN9 | 0.00 | **0.00** | | |
+| sugar+bitter → MN9 | 0.00 | **0.00** | | |
+
+Sugar → MN9 not only survives but roughly doubles, and bitter suppression stays
+exactly zero. The sugar population (34) and MN9 (bodies `10331`, `16949`) both
+survive pruning intact. Why the response strengthens is worth noting: removing
+weak connections removes proportionally more inhibition than excitation from the
+path, so min5 is not a neutral downsampling — it is a different model, as
+`MaleCNSConfig.min_synapses`' own docstring warns.
+
 ---
 
 ## 3. Did not reproduce
@@ -336,6 +404,20 @@ tautological assertions; it is that the one quantitative threshold is far too lo
   exists (`flybrain/circuits/male_cns.py:573`); the other hits are docstrings and
   the package's own files.
 * **`NOTES.md` §10's test counts.** See Finding 3.
+* **§7's wall-clock figures.** Every condition is **~1.4–1.7× slower here** than
+  §7 reports (at rest 4.57 s vs 3.3; bitter 8.27 vs 5.7; sugar 15.03 vs 8.9;
+  salt 15.47 vs 11.1), and this is despite §7 naming a *slower* CPU than mine
+  (Xeon @ 2.10 GHz there, 2.80 GHz here). So the shortfall is not explained by
+  clock speed. Candidates I did not separate: a different Xeon generation with
+  less memory bandwidth (the loop is bandwidth-bound, so nominal clock is a poor
+  predictor), a different NumPy point release, or noisy-neighbour effects in
+  either container. The consequence for the headline claim: §7's "**3–9 fps**"
+  does not hold here. I measure **2.0–6.6 fps** at a 1/30 s frame and
+  **4.0–13.1 fps** at 1/60 s, i.e. the low end is roughly half what is claimed.
+  The qualitative conclusion — it does not run in real time — is unaffected and
+  if anything reinforced.
+* **§7's "resident set during a run is about 1.2 GB".** I measure 0.64–0.72 GB.
+  This is a discrepancy in the SDK's favour and does not change any conclusion.
 
 ---
 
@@ -369,7 +451,7 @@ tautological assertions; it is that the one quantitative threshold is far too lo
   only support the coarse LB1-vs-LB3 split — exactly as §3 says, which is why it
   leans on Tastekin et al. for the subtype split. The structure of the argument is
   sound; its key premise is the unverified quote above.
-* **`min_synapses=5` behaviour** — `[PENDING, Part F]`.
+* ~~`min_synapses=5`~~ — now measured, see Part F.
 * **The coupling pedestal** — `[PENDING, Part G]`.
 
 ---

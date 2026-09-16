@@ -10,19 +10,38 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 classifiers = ["Development Status :: 3 - Alpha"]
+# The core is numpy only. Both circuits are extras, because each one pulls in a
+# model stack the other never touches: optic_lobe needs flyvis (and therefore
+# torch), male_cns needs pandas/pyarrow/scipy. Every circuit imports its own
+# stack lazily inside its constructor, so `import flybrain` loads neither --
+# which means neither has any business being a hard dependency. Installing the
+# bare package used to download a deep-learning stack even for someone who only
+# wanted the MaleCNS connectome.
 dependencies = [
     "numpy>=1.21",
-    "flyvis>=1.2.0",
 ]
 
 [project.optional-dependencies]
+# The optic_lobe circuit runs flyvis's pretrained deep mechanistic network.
+# flyvis depends on torch, so this extra is a large download.
+optic_lobe = ["flyvis>=1.2.0"]
 # The male_cns circuit reads the MaleCNS v1.0 release tables (Arrow feather)
-# and holds the connectome as a scipy sparse matrix. Nothing else in the SDK
-# needs these, so they are an extra rather than a hard dependency.
+# and holds the connectome as a scipy sparse matrix.
 male_cns = ["pandas>=1.5", "pyarrow>=10.0", "scipy>=1.9"]
+# Stage 3 coupling drives MaleCNS from flyvis, so it needs both circuits.
+coupling = ["flyvis>=1.2.0", "pandas>=1.5", "pyarrow>=10.0", "scipy>=1.9"]
 demo = ["matplotlib>=3.5", "pillow>=9.0"]
+all = [
+    "flyvis>=1.2.0",
+    "pandas>=1.5",
+    "pyarrow>=10.0",
+    "scipy>=1.9",
+    "matplotlib>=3.5",
+    "pillow>=9.0",
+]
 dev = [
     "pytest>=7.0",
+    "flyvis>=1.2.0",
     "matplotlib>=3.5",
     "pillow>=9.0",
     "pandas>=1.5",

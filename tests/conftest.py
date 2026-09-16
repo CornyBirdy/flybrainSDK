@@ -11,7 +11,10 @@ import pytest
 
 
 def _weights_available() -> bool:
+    """Whether optic_lobe can actually run: torch, flyvis AND the weights."""
     try:
+        import torch  # noqa: F401
+
         import flyvis
     except Exception:
         return False
@@ -20,7 +23,11 @@ def _weights_available() -> bool:
 
 requires_weights = pytest.mark.skipif(
     not _weights_available(),
-    reason="pretrained flyvis weights not available; run 'flyvis download-pretrained'",
+    reason=(
+        "optic_lobe unavailable: needs torch and flyvis "
+        "('pip install flybrain[optic_lobe]') and the pretrained weights "
+        "('flyvis download-pretrained')"
+    ),
 )
 
 
@@ -56,7 +63,22 @@ def panorama(height: int, width: int, seed: int = 0) -> np.ndarray:
 
 
 def _connectome_available() -> bool:
+    """Whether male_cns can actually run: its stack AND its cache.
+
+    Both halves matter. ``flybrain.malecns`` imports pandas, pyarrow and scipy
+    lazily inside the functions that use them, so it imports fine without them
+    and only fails later -- and the cache lives in ``~/.cache`` and outlives any
+    virtualenv. So a numpy-only install with a cache left over from a previous
+    environment passes a cache-only check and then errors out 15 times in the
+    fixture instead of skipping. Both circuits are extras over a numpy-only
+    core (see ``pyproject.toml``), which makes that an ordinary situation rather
+    than an exotic one.
+    """
     try:
+        import pandas  # noqa: F401
+        import pyarrow  # noqa: F401
+        import scipy.sparse  # noqa: F401
+
         from flybrain.malecns import cache_available
     except Exception:
         return False
@@ -66,8 +88,9 @@ def _connectome_available() -> bool:
 requires_connectome = pytest.mark.skipif(
     not _connectome_available(),
     reason=(
-        "MaleCNS connectome cache not built; "
-        "run 'python -m flybrain.malecns download'"
+        "male_cns unavailable: needs pandas, pyarrow and scipy "
+        "('pip install flybrain[male_cns]') and a built connectome cache "
+        "('python -m flybrain.malecns download')"
     ),
 )
 

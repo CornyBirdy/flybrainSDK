@@ -28,6 +28,22 @@ SHIFT = 5
 DT = 1 / 60
 FRAMES = 25
 
+#: Fraction of the moving-scene T4/T5 drive that a STATIC scene must still
+#: stage, for ``test_static_scene_still_produces_drive`` to be guarding the
+#: flaw it documents rather than merely its complete removal.
+#:
+#: Measured ratio: **1.0067** -- a still image stages very slightly MORE T4/T5
+#: drive than a drifting one. It is identical across MaleCNS seeds (67.86 vs
+#: 67.41 Hz at seeds 0, 1 and 2) because the staged drive comes from flyvis,
+#: which is deterministic here; only the downstream spiking is stochastic. So
+#: this bound is not guarding a noisy quantity and can sit close to the value.
+#:
+#: The previous bound was 0.5, which is half the measured ratio: a change that
+#: cut the pedestal by 40% -- a large improvement to the mapping -- would have
+#: passed silently, so the test caught a complete fix and not an improvement.
+#: See ``VERIFICATION.md`` Finding 10.
+PEDESTAL_FRACTION = 0.9
+
 
 @pytest.fixture(scope="module")
 def coupled(fly, male_cns):
@@ -141,18 +157,25 @@ def test_static_scene_still_produces_drive(coupled, frame_size):
 
     The drive is derived from flyvis activity relative to a GREY screen, so a
     static textured scene is already a large deviation and produces almost as
-    much T4/T5 drive as a moving one. The bridge is therefore not a motion
-    signal; the motion information is only in its left/right imbalance. This
-    test exists so that the flaw is visible in the suite and so that anyone
-    who fixes it finds out here.
+    much T4/T5 drive as a moving one -- measured, 100.7% as much. The bridge is
+    therefore not a motion signal; the motion information is only in its
+    left/right imbalance, which is a ±17-29 Hz asymmetry riding on a
+    motion-independent pedestal, i.e. under 10% of the signal. This test exists
+    so that the flaw is visible in the suite and so that anyone who fixes it
+    finds out here.
+
+    See PEDESTAL_FRACTION for why the bound is 0.9 and not the 0.5 it was.
     """
     eye, cns, bridge = coupled
     _, moving_drive = drift(eye, cns, bridge, +SHIFT, frame_size)
     static_asymmetry, static_drive = drift(eye, cns, bridge, 0, frame_size)
 
-    assert static_drive > 0.5 * moving_drive, (
-        "the static-scene pedestal has gone away - if that was deliberate, "
-        "update this test and the coupling docstring"
+    assert static_drive > PEDESTAL_FRACTION * moving_drive, (
+        f"the static-scene pedestal has shrunk: static drive is "
+        f"{static_drive / moving_drive:.3f} of moving drive, against a measured "
+        f"1.007 and a bound of {PEDESTAL_FRACTION}. If that was deliberate, "
+        f"update this test and the coupling docstring - the flaw it documents "
+        f"has been partly fixed"
     )
     assert abs(static_asymmetry) < 15.0, (
         f"a static scene should be roughly left/right symmetric, got "

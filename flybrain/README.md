@@ -289,7 +289,7 @@ Build the connectome cache once before first use — 566 MB from a public
 CC-BY bucket, no account and no token:
 
 ```bash
-pip install -e ".[male_cns]"
+pip install -e ".[male_cns]"   # pandas, pyarrow, scipy; no torch
 python -m flybrain.malecns download
 ```
 

@@ -5,7 +5,15 @@ actually is, what was verified, and what could not be.
 
 Written as work happened, so it records dead ends as well as results.
 Sections 1-9 are stage 1 (standalone, before touching the SDK); 10 is stage 2
-(the circuit); 11 is stage 3 (coupling, which stays a hypothesis).
+(the circuit); 11 is stage 3 (coupling, which stays a hypothesis); 13 lists the
+known issues that were deliberately not fixed.
+
+Several sections carry **Corrected** notes. An independent adversarial audit
+(`VERIFICATION.md`) re-derived the claims here against a fresh environment: the
+data, the model, the integrator and the results all reproduced, but a cluster of
+quantitative claims was overstated and the test suite did not defend any of
+them. The corrections are marked in place rather than silently rewritten, so
+what was wrong stays visible.
 
 ---
 
@@ -322,7 +330,7 @@ process at the requested rate. Verified: a neuron asked for 150 Hz fired at
 
 ## 5. Results
 
-`scratch/sanity_check.py`, 5 trials × 1 s, GRNs driven at 150 Hz.
+**`scripts/sanity_check.py`**, 5 trials × 1 s, GRNs driven at 150 Hz.
 
 ```
 MN9 firing rate
@@ -333,6 +341,31 @@ MN9 firing rate
   water        (LB3a)                   0.00 +/- 0.00 Hz
   high salt    (LB3d)                  16.80 +/- 1.59 Hz
 ```
+
+**On the provenance of this table.** It was originally produced by
+`scratch/sanity_check.py`, which was never committed — `scratch/` is gitignored
+— so for a while the protocol behind these numbers could not be checked at all
+(`VERIFICATION.md` Finding 9). A reconstruction now lives at
+**`scripts/sanity_check.py`** and is committed. Re-running it at this table's
+stated protocol (5 trials × 1 s, 150 Hz, seed 0) gives:
+
+```
+                       MN9, both bodies      MN9_L
+  baseline              0.00 +/- 0.00      0.00 +/- 0.00
+  sugar (LB3b/c)       14.70 +/- 2.25     28.40 +/- 3.50
+  bitter (LB1a-e)       0.00 +/- 0.00      0.00 +/- 0.00
+  sugar + bitter        0.00 +/- 0.00      0.00 +/- 0.00
+  water (LB3a)          0.00 +/- 0.00      0.00 +/- 0.00
+  high salt (LB3d)     15.70 +/- 2.01     30.20 +/- 3.76
+```
+
+So the table above reproduces, and it settles the ambiguity the missing script
+left: **MN9 here means the mean of the two bodies**, not MN9_L. That is why §6
+reports 10.50 Hz at 150 Hz where this section reports 13.60 — the two sections
+are not using the same read-out convention, and the MN9_L convention is about
+2× the two-body one because MN9_R is nearly silent. `tests/test_male_cns.py`
+asserts MN9_L; this section reports both bodies. Anything quoting a number from
+either should say which.
 
 **Sugar drives MN9: reproduced.** 13.6 Hz against a silent baseline. MN9 is
 two synaptic hops from the sugar GRNs in this graph (0 direct synapses,
@@ -781,3 +814,84 @@ a torch/torchvision version clash that needed a matching CPU-wheel
 `torchvision`), so the coupled path in section 11 was actually executed rather
 than only written. Expect a Ryzen 5 3600 to be faster than the numbers in
 section 7, but not by a category.
+
+---
+
+## 13. Known issues
+
+Things that are wrong, or unverified, and were deliberately **not** fixed. The
+repair pass that produced §7's corrections, §5's specificity treatment and the
+current test thresholds was scoped to tests, docs and packaging: no change was
+allowed to alter a numerical result. Everything below would require a model
+change or an environment this project has never had, so it is recorded rather
+than patched. See `VERIFICATION.md` §7 for what *was* changed.
+
+**1. There is no route to real time, and edge pruning is not it.** Measured:
+`min_synapses=5` drops 75% of the edges and buys no speedup (§7). The cost is
+the dense per-step passes over 164,587 neurons at a 0.1 ms timestep. The only
+two levers that would matter — the neuron count and the timestep — *are* the
+reference model, so pulling either makes this a different model whose results
+would need re-validating from scratch. Not attempted.
+
+**2. `shuffle_preserving_degree` does not preserve degree, and fixing it would
+change the shuffle control's numbers.** It preserves total synapse mass and sign
+exactly, but merging collided edges moves in-degree on 28,583 neurons and
+out-degree on 28,981 (see its docstring). A genuinely degree-preserving null
+would need a double-edge-swap rewiring, which is a different algorithm producing
+different numbers in §6 — a model change by the rule above. The docstring now
+states what the function actually does; the function is untouched. The control's
+conclusion survives either way, because MN9 is exactly zero in all six shuffles.
+
+**3. LB3d (high salt) is cholinergic in the release and therefore excitatory
+here**, so an aversive cell drives MN9 harder than sugar does (§5 anomaly (a)).
+This is inherited from MaleCNS's own neurotransmitter prediction. Overriding it
+would mean hand-editing the sign map against the data, which is exactly the kind
+of tuning this project refuses. It stays visible.
+
+**4. A handful of VNC motor neurons run unphysiologically hot** — 300–357 Hz
+where a real motor neuron does not (§5 anomaly (b)). Nothing reaches the 454.5 Hz
+refractory ceiling, so this is not a numerical instability; it is the reference
+model's brain-only parameter set applied to a graph that includes the ventral
+nerve cord. Fixing it means changing the model. Do not read VNC motor rates as
+physiological.
+
+**5. MN9_R is not a working read-out.** 556 input synapses from 137 partners
+against MN9_L's 6,012 from 278, because the release flags it `RT Hard to trace`.
+This is a reconstruction limit in the data, not something code can fix. Read the
+two sides separately; `motor.MN9_R` exists so that the asymmetry is visible
+rather than silently averaged away.
+
+**6. The sugar/bitter/water/salt assignment rests on four unverified
+quotations.** See the warning in §3. The citation metadata is confirmed; the
+quotations are not, after three separate attempts from three sessions. **This is
+the single most load-bearing external claim in the SDK and a human should check
+it.** Everything downstream — §5, §6, the tests, the coupling work — inherits it.
+
+**7. The static-scene pedestal in the stage-3 coupling** (§11) is a real flaw in
+the mapping, not a bug: a still image stages 100.7% as much T4/T5 drive as a
+moving one, so the bridge carries motion information only in its left/right
+imbalance, about 8% of the signal. Fixing it needs a column-to-cell registration
+between the flyvis lattice and the MaleCNS optic lobe, which does not exist.
+`tests/test_coupling.py` asserts the pedestal so that a partial fix is noticed.
+The coupling remains a hypothesis and is opt-in everywhere.
+
+**8. Nothing Windows- or GPU-specific has ever been exercised.** Every number in
+this file and in `VERIFICATION.md` comes from a 4-core Linux container with no
+GPU. Path handling on Windows, `FLYBRAIN_MALECNS_DIR` on Windows, the
+`Path.home()/.cache` default there, the `pyarrow`/`scipy` Windows wheels, and the
+claim that "a GPU port is plausible" are all untested. So is performance on the
+Ryzen 5 3600 target and on the i5-7200U mini PC. *Needed:* those machines.
+
+**9. Per-seed magnitudes do not reproduce bit-for-bit across sessions**, even
+though the statistics do. The §5 conditions, the dose-response shape, the
+left/right split and the shuffle control all reproduce tightly; individual
+numbers move by a few Hz. `scripts/sanity_check.py` now pins the protocol, which
+removes the largest suspected cause, but it does not make the model
+deterministic across environments.
+
+**10. The random-gustatory null is heavy-tailed and only its median is
+asserted.** 5 of 24 draws exceeded sugar's own rate and one reached 156 Hz (§5).
+`test_sugar_beats_a_random_gustatory_population` pins the median of five fixed
+draws, which is a real bound but not a statement about every draw. A
+labellar-only null — the more meaningful comparison, since 1,153 of the 1,428
+gustatory neurons are leg and wing — has not been run.

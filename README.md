@@ -178,24 +178,38 @@ optimistic. See `NOTES.md` §7 for both machines and `VERIFICATION.md` Finding 7
 
 ## Install
 
-Requires Python 3.9+ and PyTorch (CPU or CUDA).
+Requires Python 3.9+. **The core is numpy only** — each circuit's model stack
+is an extra, so you download only what you use. Pick the circuit you want:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-
-# PyTorch first, matching your hardware - see https://pytorch.org
-pip install torch torchvision            # or the CUDA index-url for a GPU
-
-pip install -e .                         # installs flybrain + flyvis
-flyvis download-pretrained               # ~3 MB of pretrained weights, once
+pip install -e .                         # numpy only; ports and FlyBrain work
 ```
 
-For the `male_cns` circuit, additionally:
+For `male_cns` (the MaleCNS connectome, no deep-learning stack):
 
 ```bash
 pip install -e ".[male_cns]"             # pandas, pyarrow, scipy
 python -m flybrain.malecns download      # 566 MB of connectome, once
 ```
+
+For `optic_lobe` (flyvis, which depends on PyTorch):
+
+```bash
+# PyTorch first, matching your hardware - see https://pytorch.org
+pip install torch torchvision            # or the CUDA index-url for a GPU
+pip install -e ".[optic_lobe]"           # flyvis
+flyvis download-pretrained               # ~3 MB of pretrained weights, once
+```
+
+For both, including the stage-3 coupling: `pip install -e ".[all]"`, or
+`".[coupling]"` for the two circuits without the demo's plotting deps.
+
+`import flybrain` pulls in neither stack — each circuit imports its own inside
+its constructor — so a circuit you have not installed for raises an `ImportError`
+naming the extra rather than failing at import time, and `tests/` skips it
+cleanly. (Until recently flyvis was a hard dependency, which meant anyone who
+wanted only the MaleCNS circuit downloaded torch to never import it.)
 
 The MaleCNS tables are public and CC-BY; no account and no token. The cache
 lands in `~/.cache/flybrain/malecns` unless `FLYBRAIN_MALECNS_DIR` says

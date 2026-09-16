@@ -601,10 +601,23 @@ class MaleCNSCircuit(Circuit):
 def _import_loader() -> Tuple[Any, Any]:
     """Import the MaleCNS loader, or explain what is missing.
 
+    The loader's own modules import pandas, pyarrow and scipy lazily inside
+    the functions that need them, so importing the loader is not enough to
+    prove the stack is present -- a bare install used to fail later with a raw
+    ``ModuleNotFoundError: No module named 'pandas'`` from inside
+    ``load_cache``. Since both circuits are now extras over a numpy-only core
+    (see ``pyproject.toml``), that message is the one thing standing between a
+    bare install and knowing what to install, so the three modules are probed
+    here where the explanation lives.
+
     Raises:
         ImportError: If the scientific stack the loader needs is absent.
     """
     try:
+        import pandas  # noqa: F401
+        import pyarrow  # noqa: F401
+        import scipy.sparse  # noqa: F401
+
         from ..malecns import dataset, lif
     except ImportError as exc:  # pragma: no cover - environment dependent
         raise ImportError(

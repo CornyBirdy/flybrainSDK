@@ -694,3 +694,126 @@ Nothing was pre-installed; the venv was built from scratch. `NOTES.md` §7 repor
 Timings observed so far: cache build 24.1 s (peak RSS 2.52 GB); full suite
 **40 passed in 1013 s** (under CPU contention); `tests/test_male_cns.py` alone
 15–25 s; suite with no connectome cache: 22 skipped cleanly, instantly.
+
+---
+
+## 7. Repairs
+
+A separate session, working from the audit above. **Sections 1-6 are
+untouched** — they are the record of what was found, not a live document, so
+where a repair corrected or extended a finding it is said here rather than
+edited in above.
+
+Scope: tests, docstrings, README text, `NOTES.md`, packaging. The model, the
+LIF constants, the sign map, the neuron selections and the integrator were not
+touched, and **no numerical result changed**. Where a finding would have needed
+a model change to fix, it is written up as a known issue instead — see
+`NOTES.md` §7 (reduced mode) and §13.
+
+Same container class as the audit: Linux 6.18.44-fc-v33, Intel Xeon @ 2.80 GHz,
+4 cores, 15 GB, no GPU, Python 3.11.15, numpy 2.4.6 / pandas 3.0.5 /
+pyarrow 25.0.1 / scipy 1.17.1 / pytest 9.1.1 — identical versions to §6. The
+cache rebuilt to **164,587 neurons / 24,539,704 connections / 120,793,200
+signed synapses**, and the headline protocol reproduced the audit's own numbers
+exactly (MN9_L at 0.5 s / 150 Hz: 22.00, 36.00, 26.00 Hz at seeds 0, 1, 2 —
+bit-identical to Part E), so the before/after comparison below is measured on
+the same footing.
+
+### 7.1 Fix 1 — the test suite
+
+**What was wrong.** `test_sugar_drives_mn9` asserted `sugar > 1.0` Hz over a
+0.5 s window in which one spike reads as 2.0 Hz, against a real effect of
+22-52 Hz. `test_shuffling_the_connectome_abolishes_the_result` asserted
+`rates.sum() > 100.0` against a real value of ~9,000 Hz, and asserted nothing
+about the real graph, so it stayed green on a graph that was already noise.
+
+**What changed** (`tests/test_male_cns.py`, commit `c139cd7`):
+
+| bound | was | now | measured value it guards | measured noise floor |
+|---|---|---|---|---|
+| sugar → MN9_L | `> 1.0` Hz | `> 10.0` Hz (`SUGAR_FLOOR_HZ`) | 22-52 Hz, seeds 0-14 | 0-4 Hz permuted |
+| shuffled network activity | `> 100.0` Hz | `> 0.02 ×` real activity | 0.11-0.13 of real | — |
+| shuffle control, real graph | *(not asserted)* | `real > SUGAR_FLOOR_HZ` | 22 Hz at seed 0 | 0 Hz permuted |
+| sugar + bitter | `< sugar` | `<= 0.1 × sugar` | exactly 0.00 Hz | — |
+| driven spikes before reset | `> 0` | `> 100` | 1,184 | — |
+
+Every one now carries the measurement in a comment beside it. Two further
+bounds were checked and deliberately left alone: `bitter == 0.0` and the
+silent-network assertions are exact equalities, which is the strongest form
+available, and `population(port).size > 0` is a structural existence check
+(MN9_L legitimately has exactly one body).
+
+`DURATION` **stays at 0.5 s.** Measured: doubling it tightens the spread
+(25-34 Hz over seeds 0-4 at 1.0 s, against 22-52 Hz at 0.5 s) but takes the
+sugar-driven condition from 2.6 s to 9.6 s of wall time, and this file runs
+four such conditions — ~19 s → ~45 s, on a suite already at ~17 minutes. The
+reason to lengthen it was that single-spike quantisation dominated; it only
+dominated because the threshold sat one spike above the noise floor, and
+raising the threshold fixes that directly. At 0.5 s the minimum real response
+is 11 spikes and the floor is 5, so the quantisation is no longer near the
+decision boundary. The trade-off is recorded in the constant's comment.
+
+One test was added, `test_sugar_beats_a_random_gustatory_population` — see
+§7.3. It costs ~12 s; the file goes **19 s → 31 s**, 15 tests → 16.
+
+**Mutation re-run, before and after.** Five mutations, each applied to a clean
+tree, cache rebuilt in a separate directory where relevant (the pristine cache
+was never touched), then `pytest tests/test_male_cns.py`, then
+`git checkout -- flybrain/`. "Before" is Part E; "after" is this session.
+
+| # | mutation | before | after | newly caught by |
+|---|---|---|---|---|
+| 1 | zero all transmitter signs | 2 failed, 13 passed | **3 failed, 13 passed** | the random-gustatory control |
+| 2 | glutamate → excitatory | 2 failed, 13 passed | **4 failed, 12 passed** | the random-gustatory control, the shuffle contrast |
+| 3 | **permute postsynaptic column** | **15 passed — fully green** | **3 failed, 13 passed** | `test_sugar_drives_mn9`, the shuffle contrast, the random-gustatory control |
+| 4 | swap sugar/bitter GRN sets | 4 failed, 11 passed | **5 failed, 11 passed** | the random-gustatory control |
+| 5 | MN9 → arbitrary motor neurons | 3 failed, 12 passed | **4 failed, 12 passed** | the shuffle contrast, the random-gustatory control |
+
+**Mutation 3 is caught.** Under it, MN9_L reads 0.00 Hz and the suite says so
+in the assertion text:
+
+```
+E  AssertionError: sugar activation should drive MN9_L to 22-52 Hz on this
+   graph, got 0.00 Hz, which is below the 10.0 Hz floor. A connectome with its
+   wiring destroyed produces 0-4 Hz here, so a rate this low means the pathway
+   is gone, not merely weak
+E  assert 0.0 > 10.0
+```
+
+and the shuffle control now reports itself vacuous rather than passing:
+
+```
+E  AssertionError: the unshuffled graph only put MN9_L at 0.00 Hz, below the
+   10.0 Hz floor, so there is no result for the shuffle to abolish and this
+   control cannot mean anything. Fix test_sugar_drives_mn9 first
+```
+
+The four mutations that already worked all still fail, and each now fails
+*more* tests than before. Final `git status`: clean; no mutation was committed
+and none was left applied.
+
+**Two things to record against my own work here.**
+
+*The permutation is not the audit's permutation.* Part E measured 2.00 Hz at
+seed 0 on the permuted graph and 0.00-4.00 Hz over seeds 0-4. Mine
+(`default_rng(0).permutation(body_post)`) gives **exactly 0.00 Hz in all of
+seeds 0-9** — a different random permutation, so a different accidental-spike
+outcome. Both are below 10 Hz, and taken together they are 15 measured seeds
+of noise floor across two independent permutations, which is the evidence the
+threshold rests on. But the two "before/after" rows for mutation 3 are not the
+same permutation, and the reason mutation 3 is now caught is the threshold, not
+the permutation: at the audit's own 2.00 Hz the new floor would have failed it
+just as decisively.
+
+*My first attempt at mutation 5 was a bad mutation.* I pointed the MN9 ports at
+`MN11D_L`/`MN11D_R`, which is not an arbitrary motor pair at all — it is the
+hottest cell type in the network under sugar drive (94 Hz and 335 Hz at seed 0,
+against MN9_L's 22 Hz). With that substitute only 2 tests fail, because a hot
+substitute clears a rate floor as easily as the real read-out does. Re-run with
+`MN5_L`/`MN5_R`, a genuinely arbitrary paired motor type that is silent under
+sugar drive, **4 tests fail**, and that is the row in the table above. Worth
+knowing generally: what reliably catches a read-out swap is the identity pin
+`test_mn9_bodies_are_the_documented_ones`, which fired under both variants. The
+rate tests catch it only when the substitute is not itself strongly driven. Part
+E's mutation 5 did not name its substitute, so its 3-failure row and my
+4-failure row are also not strictly the same mutation.

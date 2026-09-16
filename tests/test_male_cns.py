@@ -59,14 +59,16 @@ DURATION = 0.5
 #: This is the one number in this file the whole circuit rests on, so it is
 #: sized against both sides of the measurement rather than against zero:
 #:
-#:   real connectome,     150 Hz sugar, 0.5 s, seeds 0-14:  22-52 Hz
-#:   postsynaptic column permuted (99.5% of wiring destroyed), seeds 0-4:
-#:                                                            0-4 Hz
+#:   real connectome, 150 Hz sugar, 0.5 s, seeds 0-14:      22-52 Hz
+#:   postsynaptic column permuted (99.5% of the wiring gone):
+#:     the audit's permutation, seeds 0-4:                     0-4 Hz
+#:     a second, independent permutation, seeds 0-9:            0 Hz
 #:
-#: 10 Hz sits 2.5x above the highest rate a destroyed connectome produced and
-#: 2.2x below the lowest rate the real one produced. The previous bound was
-#: 1.0 Hz, which a single accidental spike (2.0 Hz) cleared -- so a fully
-#: randomised connectome passed this file. See VERIFICATION.md Part E.
+#: So 10 Hz sits 2.5x above the highest rate any destroyed connectome has
+#: produced over 15 measured seeds, and 2.2x below the lowest rate the real
+#: one has. The previous bound was 1.0 Hz, which a single accidental spike
+#: (2.0 Hz at this DURATION) cleared -- so a fully randomised connectome
+#: passed every test in this file. See VERIFICATION.md Parts E and 7.
 SUGAR_FLOOR_HZ = 10.0
 
 #: Fraction of the real network's total activity the degree-shuffled null must
